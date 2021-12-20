@@ -8,7 +8,8 @@ def get_cache(filename):
         params={"job" : os.environ['CI_BUILD_STAGE'], "job_token" : os.environ['CI_JOB_TOKEN']}
     )
     print(r.status_code)
-    print(r.body)
+    print(r.text)
+    return r.text
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

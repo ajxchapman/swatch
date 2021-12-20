@@ -21,6 +21,7 @@ def read_cache(filename):
     if not isinstance(cache, dict):
         cache = {}
     cache.setdefault("watches", {})
+    print(cache)
     return cache
 
 def write_cache(obj, filename):
@@ -40,7 +41,6 @@ def alert(watch, entry):
             headers={"content-type" : hook.get("content-type", "application/json")},
             data=data.encode()
         )
-        print(r)
     else:
         print(data)
 

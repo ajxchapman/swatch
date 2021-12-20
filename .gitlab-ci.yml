@@ -8,7 +8,7 @@ scrape:
   script:
     - env
     - pip install -r requirements.txt
-    - python3 ./scrape.py -o cache.yaml -i watch.yaml
+    - python3 ./scrape.py -c cache.yaml -i watch.yaml
   artifacts:
     paths:
       - cache.yaml

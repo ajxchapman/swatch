@@ -1,0 +1,17 @@
+image: python:3.8-alpine
+
+stages:
+  - scrape
+
+scrape:
+  stage: scrape
+  script:
+    - env
+    - pip install -r requirements.txt
+    - python3 ./scrape.py -o cache.yaml -i watch.yaml
+  artifacts:
+    paths:
+      - cache.yaml
+    expire_in: 1 day
+    
+    

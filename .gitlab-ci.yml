@@ -6,9 +6,9 @@ stages:
 scrape:
   stage: scrape
   script:
-    - env
+    - ls -la
     - pip install -r requirements.txt
-    - python3 ./scrape.py -c cache.yaml -i watch.yaml
+    - python3 ./scrape.py -c cache.yaml -i watch
   artifacts:
     paths:
       - cache.yaml

@@ -1,2 +1,4 @@
 requests
 pyyaml
+jq
+beautifulsoup4

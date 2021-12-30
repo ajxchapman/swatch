@@ -6,8 +6,9 @@ stages:
 watch:
   stage: watch
   script:
+    - git clone "https://${SOURCEMON_WATCH_DEPLOY_CREDENTIALS}@gitlab.com/ajxchapman/sourcemon-watch.git" sourcemon-watch
     - curl -Lo cache.yaml "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/jobs/artifacts/${CI_COMMIT_REF_NAME}/raw/cache.yaml?job=${CI_BUILD_STAGE}&job_token=${CI_JOB_TOKEN}" || true
-    - python3 ./watch.py --cache cache.yaml --input ${watch}
+    - python3 ./watch.py --cache cache.yaml --input sourcemon-watch/watch.yaml
   artifacts:
     paths:
       - cache.yaml

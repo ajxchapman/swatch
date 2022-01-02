@@ -96,9 +96,14 @@ def fetch_cmd(kcmd, shell="/bin/sh", timeout=10, selector=None, return_code=0, *
         raise FetchException(f"Return code {p.returncode} != {return_code}")
     return apply_selector(p.stdout, selector)
 
-def print_verbose(key, data):
-    vdata = "\n\t" + "\n\t".join(data.decode().splitlines())
-    print(f"{key}:{vdata}\n")
+def print_keydata(key, data, verbose=False):
+    if verbose:
+        vdata = "\n\t" + "\n\t".join(data.decode().splitlines())
+        print(f"{key}:{vdata}\n")
+    else:
+        key_digest = hashlib.sha256(key.encode()).hexdigest()
+        data_digest = hashlib.sha256(data).hexdigest()
+        print(f"{key_digest}:{data_digest}")
 
 def check_cache(key, data, entry, cache):
     key_digest = hashlib.sha256(key.encode()).hexdigest()
@@ -116,8 +121,7 @@ def process(watch, cache, verbose=False):
             if "url" in entry:
                 key = entry["url"]
                 data = fetch_url(key, **entry)
-                if verbose:
-                    print_verbose(key, data)
+                print_keydata(key, data, verbose=verbose)
                 check_cache(key, data, entry, cache)
             elif "urls" in entry:
                 for key in entry["urls"]:
@@ -127,14 +131,12 @@ def process(watch, cache, verbose=False):
                         _entry = key
                         key = _entry["url"]
                     data = fetch_url(key, **{**entry, **_entry})
-                    if verbose:
-                        print_verbose(key, data)
+                    print_keydata(key, data, verbose=verbose)
                     check_cache(key, data, entry, cache)
             elif "cmd" in entry:
                 key = entry["cmd"]
                 data = fetch_cmd(key, **entry)
-                if verbose:
-                    print_verbose(key, data)
+                print_keydata(key, data, verbose=verbose)
                 check_cache(key, data, entry, cache)
             else:
                 raise ProcessException("Unknown entry")

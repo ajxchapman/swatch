@@ -11,9 +11,7 @@ import yaml
 import jq
 from bs4 import BeautifulSoup
 
-cache = {}
 def read_cache(filename):
-    global cache
     cache = {}
     if os.path.isfile(filename):
         with open(filename) as f:
@@ -23,7 +21,7 @@ def read_cache(filename):
     cache.setdefault("watches", {})
     return cache
 
-def write_cache(filename):
+def write_cache(filename, cache):
     with open(filename, "w") as f:
         yaml.dump(cache, f, default_flow_style=False)
 
@@ -194,7 +192,7 @@ class GroupWatch(Watch):
             return False
         return True
 
-def process(config, verbose=False):
+def process(config, cache, verbose=False):
     watches = Watch.load(config.get("watch", []))
     for watch in watches:
         try:
@@ -215,8 +213,8 @@ if __name__ == "__main__":
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
 
-    read_cache(args.cache)
     with open(args.input) as f:
-        watch = yaml.safe_load(f)
-    process(watch, verbose=args.verbose)
-    write_cache(args.cache)
+    
+    cache = read_cache(args.cache)
+    process(config, cache, verbose=args.verbose)
+    write_cache(args.cache, cache)

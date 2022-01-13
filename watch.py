@@ -134,7 +134,7 @@ class Watch:
     def alert_message(self):
         message = self.key
         if self.comment is not None:
-            message += f"\n> {self.comment.strip()}"
+            message += "\n> " + "\n> ".join(self.commen.strip().splitlines())
         return message
 
 class UrlWatch(Watch):

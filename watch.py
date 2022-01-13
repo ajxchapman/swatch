@@ -11,16 +11,9 @@ import yaml
 import jq
 from bs4 import BeautifulSoup
 
-class FetchException(Exception):
-    pass
-
-class SelectorException(Exception):
-    pass
-
-class ProcessException(Exception):
-    pass
-
+cache = {}
 def read_cache(filename):
+    global cache
     cache = {}
     if os.path.isfile(filename):
         with open(filename) as f:
@@ -30,124 +23,190 @@ def read_cache(filename):
     cache.setdefault("watches", {})
     return cache
 
-def write_cache(obj, filename):
+def write_cache(filename):
     with open(filename, "w") as f:
-        yaml.dump(obj, f, default_flow_style=False)
+        yaml.dump(cache, f, default_flow_style=False)
 
-def alert(watch, key, entry):
-    hook = entry.get("hook", watch.get("hook", {}))
-
-    message = f"{key} changed."
-    if "comment" in entry:
-        message += f"\n> {entry['comment']}"
-    data = hook.get("payload", json.dumps({"text" : message})).replace("MESSAGE", json.dumps(message))
-
-    if "url" in hook:
-        r = requests.request(
-            hook.get("method", "POST"),
-            hook["url"],
-            headers={"content-type" : hook.get("content-type", "application/json")},
-            data=data.encode()
-        )
-    else:
-        print(data)
-
-def apply_selector(data, selectors):
-    if selectors is None:
-        return data
-    if not isinstance(selectors, list):
-        selectors = [selectors]
-
-    for selector in selectors:
-        skey = next(selector.keys().__iter__())
-        pattern = selector[skey]
-        if skey == "regex":
-            m = re.search(pattern.encode(), data, re.MULTILINE)
-            data = m.group() if m else b''
-        elif skey == "jq":
-            j = json.loads(data)
-            data = jq.compile(pattern).input(j).text().encode()
-        elif skey == "css":
-            soup = BeautifulSoup(data, "html.parser")
-            data = json.dumps([str(x) for x in soup.select(pattern)]).encode()
-        elif skey == "bytes":
-            start, end = (pattern.split(":") + [""])[:2]
-            data = data[int(start) if start.isdigit() else 0:int(end) if end.isdigit() else None]
-        elif skey == "lines":
-            start, end = (pattern.split(":") + [""])[:2]
-            data = "".join(data.splitlines(keepends=True)[int(start) if start.isdigit() else 0:int(end) if end.isdigit() else None])
-        else:
-            raise SelectorException(f"Unknown selector {stype}")
-    return data
-
-def fetch_url(kurl, method="GET", headers={}, code=200, data=None, selector=None, **kwargs):
-    r = requests.request(
-        method,
-        kurl,
-        headers=headers,
-        data=data)
-    if r.status_code != code:
-        raise FetchException(f"Status code {r.status_code} != {code}")
-    return apply_selector(r.content, selector)
-
-def fetch_cmd(kcmd, shell="/bin/sh", timeout=10, selector=None, return_code=0, **kwargs):
-    p = subprocess.run([shell], input=kcmd.encode(), timeout=timeout, capture_output=True)
-    if p.returncode != return_code:
-        raise FetchException(f"Return code {p.returncode} != {return_code}")
-    return apply_selector(p.stdout, selector)
-
-def print_keydata(key, data, verbose=False):
-    if verbose:
-        vdata = "\n\t" + "\n\t".join(data.decode().splitlines())
-        print(f"{key}:{vdata}\n")
-    else:
-        key_digest = hashlib.sha256(key.encode()).hexdigest()
-        data_digest = hashlib.sha256(data).hexdigest()
-        print(f"{key_digest}:{data_digest}")
-
-def check_cache(key, data, entry, cache):
+def check_in_cache(cache, key, data):
     key_digest = hashlib.sha256(key.encode()).hexdigest()
     data_digest = hashlib.sha256(data).hexdigest()
 
     # If the key_digest is not previously watched, or the data_digest does not match the cache, alert
     if cache["watches"].get(key_digest) != data_digest:
         cache["watches"][key_digest] = data_digest
-        alert(watch, key, entry)
+        return False
+    return True
 
-def process(watch, cache, verbose=False):
-    for entry in watch.get("watch", []):
-        key = None
+def alert(message, alert_hook=None):
+    if alert_hook is not None:
+        data = alert_hook.get("payload", json.dumps({"text" : message})).replace("MESSAGE", json.dumps(message))
+        r = requests.request(
+            alert_hook.get("method", "POST"),
+            alert_hook["url"],
+            headers={"content-type" : alert_hook.get("content-type", "application/json")},
+            data=data.encode()
+        )
+    else:
+        print(message)
+
+class WatchException(Exception):
+    def __init__(self, key, *args, **kwargs):
+        self.key = key
+        super().__init__(*args, **kwargs)
+
+class WatchFetchException(WatchException):
+    pass
+
+class WatchSelectorException(WatchException):
+    pass
+
+
+class Watch:
+    keys = {
+        "selectors" : [],
+        "comment" : ""
+    }
+
+    @classmethod
+    def load(cls, object_definitions):
+        # Load default key values from the Watch subclasses
+        decoders = {}
+        class_keys = {}
+        for c in cls.__subclasses__():
+            decoders[c.__name__.replace(cls.__name__, "").lower()] = c
+        for c in cls.__subclasses__():
+            for x in c.__mro__[::-1]:
+                class_keys[c.__name__] = {**class_keys.get(c.__name__, {}), **getattr(x, "keys", {})}
+
+        # For each of the input object_definitions, find the correct class and decode it using default values where not provided
+        _watchers = []
+        for object_definition in object_definitions:
+            for object_type, wclass in decoders.items():
+                if object_type in object_definition:
+                    _watchers.append(wclass.decode(**{**class_keys[wclass.__name__], **object_definition, "key" : object_definition[object_type]}))
+                    break
+        return _watchers
+
+    @classmethod
+    def decode(cls, **kwargs):
+        # Basic decode method to set object attributes from arguments
+        o = cls()
+        for key, value in kwargs.items():
+            setattr(o, key, value)
+        return o
+
+    def apply_selectors(self, data):
+        for selector in self.selectors:
+            skey = next(selector.keys().__iter__())
+            pattern = selector[skey]
+            if skey == "regex":
+                m = re.search(pattern.encode(), data, re.MULTILINE)
+                data = m.group() if m else b''
+            elif skey == "jq":
+                j = json.loads(data)
+                data = jq.compile(pattern).input(j).text().encode()
+            elif skey == "css":
+                soup = BeautifulSoup(data, "html.parser")
+                data = json.dumps([str(x) for x in soup.select(pattern)]).encode()
+            elif skey == "bytes":
+                start, end = (pattern.split(":") + [""])[:2]
+                data = data[int(start) if start.isdigit() else 0:int(end) if end.isdigit() else None]
+            elif skey == "lines":
+                start, end = (pattern.split(":") + [""])[:2]
+                data = "".join(data.splitlines(keepends=True)[int(start) if start.isdigit() else 0:int(end) if end.isdigit() else None])
+            else:
+                raise WatchSelectorException(self.key, f"Unknown selector {stype}")
+        return data
+
+    def fetch(self, *args, **kwargs):
+        raise WatchFetchException(self.key, "Not implemented")
+
+    def in_cache(self, cache, verbose=False):
+        data = self.apply_selectors(self.fetch())
+        if verbose:
+            vdata = "\n\t" + "\n\t".join(data.decode().splitlines())
+            print(f"{self.key}:{vdata}\n")
+        else:
+            key_digest = hashlib.sha256(self.key.encode()).hexdigest()
+            data_digest = hashlib.sha256(data).hexdigest()
+            print(f"{key_digest}:{data_digest}")
+
+        return check_in_cache(cache, self.key, data)
+
+    def alert_message(self):
+        message = self.key
+        if self.comment is not None:
+            message += f"\n> {self.comment.strip()}"
+        return message
+
+class UrlWatch(Watch):
+    cache = {}
+    keys = {
+        "method" : "GET",
+        "headers" : {},
+        "data" : None, 
+        "code" : 200
+    }
+
+    def fetch(self):
+        # Allow caching of URLs
+        r = UrlWatch.cache.get(self.url)
+        if r is None:
+            r = requests.request(
+                self.method,
+                self.url,
+                headers=self.headers,
+                data=self.data)
+            UrlWatch.cache[self.url] = r
+        if r.status_code != self.code:
+            raise WatchFetchException(self.key, f"Status code {r.status_code} != {self.code}")
+        return r.content
+
+class CmdWatch(Watch):
+    keys = {
+        "shell" : "/bin/sh",
+        "timeout" : 30,
+        "return_code" : 0
+    }
+
+    def fetch(self):
+        p = subprocess.run([self.shell], input=self.cmd.encode(), timeout=self.timeout, capture_output=True)
+        if p.returncode != self.return_code:
+            raise WatchFetchException(self.key, f"Return code {p.returncode} != {self.return_code}")
+        return p.stdout
+
+class GroupWatch(Watch):
+    @classmethod
+    def decode(cls, **kwargs):
+        objs = kwargs["group"]
+        del kwargs["group"]
+        o = super().decode(**kwargs)
+        setattr(o, "group", Watch.load(objs))
+        return o
+
+    def in_cache(self, cache, verbose=False):
+        uncached_keys = []
+        for x in self.group:
+           if not x.in_cache(cache, verbose=verbose):
+               uncached_keys.append(x.key)
+        if len(uncached_keys):
+            self.key = "\n".join(uncached_keys)
+            return False
+        return True
+
+def process(config, verbose=False):
+    watches = Watch.load(config.get("watch", []))
+    for watch in watches:
         try:
-            if "url" in entry:
-                key = entry["url"]
-                data = fetch_url(key, **entry)
-                print_keydata(key, data, verbose=verbose)
-                check_cache(key, data, entry, cache)
-            elif "urls" in entry:
-                for key in entry["urls"]:
-                    # Allow each URL entry to be either a string URL, or a sub-URL entry
-                    _entry = {}
-                    if isinstance(key, dict):
-                        _entry = key
-                        key = _entry["url"]
-                    data = fetch_url(key, **{**entry, **_entry})
-                    print_keydata(key, data, verbose=verbose)
-                    check_cache(key, data, entry, cache)
-            elif "cmd" in entry:
-                key = entry["cmd"]
-                data = fetch_cmd(key, **entry)
-                print_keydata(key, data, verbose=verbose)
-                check_cache(key, data, entry, cache)
-            else:
-                raise ProcessException("Unknown entry")
-        except Exception as e:
-            if key is None:
-                sys.stderr.write(f"Unexpected error:\n\t{e.__class__.__name__}: {e}\n")
-            else:
-                if not verbose:
-                    key = hashlib.sha256(key.encode()).hexdigest()
-                sys.stderr.write(f"Error processing {key}:\n\t{e.__class__.__name__}: {e}\n")
+            if not watch.in_cache(cache, verbose=verbose):
+                alert(watch.alert_message(), alert_hook=config.get("hook"))
+        except WatchException as e:
+            key = e.key
+            if not verbose:
+                key = hashlib.sha256(key.encode()).hexdigest()
+            sys.stderr.write(f"Error processing {key}:\n\t{e.__class__.__name__}: {e}\n")
             continue
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -156,9 +215,8 @@ if __name__ == "__main__":
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
 
-    cache = read_cache(args.cache)
-
+    read_cache(args.cache)
     with open(args.input) as f:
         watch = yaml.safe_load(f)
-    process(watch, cache, verbose=args.verbose)
-    write_cache(cache, args.cache)
+    process(watch, verbose=args.verbose)
+    write_cache(args.cache)

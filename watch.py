@@ -205,6 +205,10 @@ def process(config, cache, verbose=False):
             sys.stderr.write(f"Error processing {key}:\n\t{e.__class__.__name__}: {e}\n")
             continue
 
+def replace_var(vars, var):
+    if var in vars:
+        return vars[var]
+    return os.environ.get(var, var)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -214,6 +218,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     with open(args.input) as f:
+        config_data = f.read()
+    
+    config = yaml.safe_load(config_data)
+    config_data = re.sub(r'\$\{([^}]+)\}', lambda match: replace_var(config.get("variables", {}), match.group(1)), config_data)
+    config = yaml.safe_load(config_data)
+
     
     cache = read_cache(args.cache)
     process(config, cache, verbose=args.verbose)

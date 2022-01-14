@@ -270,7 +270,6 @@ class UrlWatch(Watch):
             UrlWatch.cache[self.url] = r
         if r.status_code != self.code:
             raise WatchFetchException(self.key, f"Status code {r.status_code} != {self.code}")
-        print("fetch done")
         return r.content
 
 class CmdWatch(Watch):

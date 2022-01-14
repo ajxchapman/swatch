@@ -47,6 +47,9 @@ def alert(message, alert_hook=None):
     else:
         print(message)
 
+class ModifierException(Exception):
+    pass
+
 class WatchException(Exception):
     def __init__(self, key, *args, **kwargs):
         self.key = key
@@ -58,10 +61,132 @@ class WatchFetchException(WatchException):
 class WatchSelectorException(WatchException):
     pass
 
+class Modifier:
+    modifier_classes = None
+    modifier_class_keys = None
+    keys = {
+        "value" : (str, None)
+    }
+
+    @classmethod
+    def load(cls, **kwargs):
+        if Modifier.modifier_classes is None:
+            Modifier.modifier_classes = {}
+            Modifier.modifier_class_keys = {}
+            for c in cls.__subclasses__():
+                modifier_name = c.__name__.replace(cls.__name__, "").lower()
+                Modifier.modifier_classes[modifier_name] = c
+                for x in c.__mro__[::-1]:
+                    Modifier.modifier_class_keys[modifier_name] = {**Modifier.modifier_class_keys.get(modifier_name, {}), **getattr(x, "keys", {})}
+
+        # Obtain the modifier type either looking for the `type` key, or use the name of the only key if there is only one
+        mtype = kwargs.get("type")
+        if mtype is not None:
+            del kwargs["type"]
+        else:
+            mtype = next(kwargs.keys().__iter__())
+            kwargs["value"] = kwargs[mtype]
+            del kwargs[mtype]
+        if mtype is None:
+            raise ModifierException("No type for modifier")
+
+        o = Modifier.modifier_classes[mtype]()
+        for k, v in Modifier.modifier_class_keys[mtype].items():
+            ktype, kdefault = v
+            if k in kwargs:
+                val = kwargs[k] if isinstance(kwargs[k], ktype) else ktype(kwargs[k])
+                setattr(o, k, val)
+            else:
+                setattr(o, k, kdefault)
+        return o
+
+class RegexModifier(Modifier):
+    def run(self, data):
+        m = re.search(self.value.encode(), data, re.MULTILINE)
+        return m.group() if m else b''
+
+class JqModifier(Modifier):
+    def run(self, data):
+        j = json.loads(data)
+        output_lines = []
+        for line in jq.compile(self.value).input(j).all():
+            output_lines.append(str(line))
+        return "\n".join(output_lines).encode()
+
+class CssModifier(Modifier):
+    def run(self, data):
+        soup = BeautifulSoup(data, "html.parser")
+        return json.dumps([str(x) for x in soup.select(self.value)]).encode()
+
+class BytesModifier(Modifier):
+    keys = {
+        "start" : (int, 0),
+        "end" : (int, None)
+    }
+
+    def run(self, data):
+        start, end = (pattern.split(":") + [""])[:2]
+        return data[self.start:self.end]
+
+class LinesModifier(Modifier):
+    keys = {
+        "start" : (int, 0),
+        "end" : (int, None)
+    }
+
+    def run(self, data):
+        return "".join(data.splitlines(keepends=True)[self.start:self.end])
+
+class NewModifier(Modifier):
+    keys = {
+        "key" : (str, None),
+        "cache" : (dict, {})
+    }
+
+    def run(self, data):
+        key_digest = hashlib.sha256(self.key.encode()).hexdigest()
+        lines = data.splitlines()
+        last_set = set(self.cache.setdefault("elements", {}).setdefault(key_digest, []))
+        lines_hash = [hashlib.sha256(x).hexdigest() for x in lines]
+        output_lines = []
+
+        for i, x in enumerate(lines_hash):
+            if x not in last_set:
+                output_lines.append(lines[i])
+        self.cache["elements"][key_digest] = lines_hash
+        return b'\n'.join(output_lines)
+
+class SplitModifier(Modifier):
+    keys = {
+        "sep" : (str, ","),
+        "start" : (int, 0),
+        "end" : (int, None)
+    }
+
+    def run(self, data):
+        lines = data.decode().splitlines()
+        out_lines = []
+        for line in lines:
+            out_lines.append(self.sep.join(line.split(self.sep)[self.start:self.end]))
+        return "\n".join(out_lines).encode()
+
+class StripModifier(Modifier):
+    keys = {
+        "chars" : (str, "\t ")
+    }
+
+    def run(self, data):
+        lines = data.decode().splitlines()
+        out_lines = []
+        for line in lines:
+            out_lines.append(line.strip(self.chars))
+        return "\n".join(out_lines).encode()
+
 
 class Watch:
     keys = {
         "selectors" : [],
+        "output" : [],
         "comment" : ""
     }
 
@@ -72,7 +197,6 @@ class Watch:
         class_keys = {}
         for c in cls.__subclasses__():
             decoders[c.__name__.replace(cls.__name__, "").lower()] = c
-        for c in cls.__subclasses__():
             for x in c.__mro__[::-1]:
                 class_keys[c.__name__] = {**class_keys.get(c.__name__, {}), **getattr(x, "keys", {})}
 
@@ -93,46 +217,34 @@ class Watch:
             setattr(o, key, value)
         return o
 
-    def apply_selectors(self, data):
-        for selector in self.selectors:
-            skey = next(selector.keys().__iter__())
-            pattern = selector[skey]
-            if skey == "regex":
-                m = re.search(pattern.encode(), data, re.MULTILINE)
-                data = m.group() if m else b''
-            elif skey == "jq":
-                j = json.loads(data)
-                data = jq.compile(pattern).input(j).text().encode()
-            elif skey == "css":
-                soup = BeautifulSoup(data, "html.parser")
-                data = json.dumps([str(x) for x in soup.select(pattern)]).encode()
-            elif skey == "bytes":
-                start, end = (pattern.split(":") + [""])[:2]
-                data = data[int(start) if start.isdigit() else 0:int(end) if end.isdigit() else None]
-            elif skey == "lines":
-                start, end = (pattern.split(":") + [""])[:2]
-                data = "".join(data.splitlines(keepends=True)[int(start) if start.isdigit() else 0:int(end) if end.isdigit() else None])
-            else:
-                raise WatchSelectorException(self.key, f"Unknown selector {stype}")
+    def apply_modifiers(self, modifiers, data, **kwargs):
+        for modifier_data in modifiers:
+            try:
+                data = Modifier.load(**modifier_data, **kwargs).run(data)
+            except ModifierException:
+                raise WatchSelectorException(self.key, f"Unknown selector {selector}")
         return data
 
     def fetch(self, *args, **kwargs):
         raise WatchFetchException(self.key, "Not implemented")
 
     def in_cache(self, cache, verbose=False):
-        data = self.apply_selectors(self.fetch())
+        selected_data = self.apply_modifiers(self.selectors, self.fetch(), key=self.key, cache=cache)
+        self.output_data = self.apply_modifiers(self.output, selected_data, key=self.key, cache=cache) if len(self.output) else None
         if verbose:
-            vdata = "\n\t" + "\n\t".join(data.decode().splitlines())
+            vdata = "\n\t" + "\n\t".join((self.output_data or selected_data).decode().splitlines())
             print(f"{self.key}:{vdata}\n")
         else:
             key_digest = hashlib.sha256(self.key.encode()).hexdigest()
-            data_digest = hashlib.sha256(data).hexdigest()
+            data_digest = hashlib.sha256(selected_data).hexdigest()
             print(f"{key_digest}:{data_digest}")
 
-        return check_in_cache(cache, self.key, data)
+        return check_in_cache(cache, self.key, selected_data)
 
     def alert_message(self):
         message = self.key
+        if self.output_data is not None:
+            message += "\n* " + "\n* ".join(self.output_data.decode().strip().splitlines())
         if self.comment is not None:
             message += "\n> " + "\n> ".join(self.comment.strip().splitlines())
         return message
@@ -158,6 +270,7 @@ class UrlWatch(Watch):
             UrlWatch.cache[self.url] = r
         if r.status_code != self.code:
             raise WatchFetchException(self.key, f"Status code {r.status_code} != {self.code}")
+        print("fetch done")
         return r.content
 
 class CmdWatch(Watch):

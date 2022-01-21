@@ -116,7 +116,7 @@ class JqModifier(Modifier):
 class CssModifier(Modifier):
     def run(self, data):
         soup = BeautifulSoup(data, "html.parser")
-        return json.dumps([str(x) for x in soup.select(self.value)]).encode()
+        return "\n".join([str(x) for x in soup.select(self.value)]).encode()
 
 class BytesModifier(Modifier):
     keys = {

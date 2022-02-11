@@ -243,7 +243,7 @@ class Watch:
 
     def alert_message(self):
         message = self.key
-        if self.output_data is not None:
+        if getattr(self, "output_data") is not None:
             message += "\n* " + "\n* ".join(self.output_data.decode().strip().splitlines())
         if self.comment is not None:
             message += "\n> " + "\n> ".join(self.comment.strip().splitlines())

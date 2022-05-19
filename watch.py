@@ -191,7 +191,7 @@ class SplitModifier(Modifier):
 
     def run(self, data:bytes) -> typing.List[bytes]:
         bsep = self.sep.encode()
-        return [bsep.join(data.split(bsep)[self.start:self.end])]
+        return data.split(bsep)[self.start:self.end]
 
 class StripModifier(Modifier):
     default_key = "chars"
@@ -212,8 +212,9 @@ class ReplaceModifier(Modifier):
     def run(self, data:bytes) -> typing.List[bytes]:
         return [re.sub(self.regex.encode(), self.replacement.encode(), data)]
 
-
 class Watch:
+    watch_classes = None
+    watch_class_keys = None
     keys = {
         "selectors" : [],
         "output" : [],
@@ -221,31 +222,39 @@ class Watch:
     }
 
     @classmethod
-    def load(cls, object_definitions):
-        # Load default key values from the Watch subclasses
-        decoders = {}
-        class_keys = {}
-        for c in cls.__subclasses__():
-            decoders[c.__name__.replace(cls.__name__, "").lower()] = c
-            for x in c.__mro__[::-1]:
-                class_keys[c.__name__] = {**class_keys.get(c.__name__, {}), **getattr(x, "keys", {})}
+    def load(cls, **kwargs):
 
-        # For each of the input object_definitions, find the correct class and decode it using default values where not provided
-        _watchers = []
-        for object_definition in object_definitions:
-            for object_type, wclass in decoders.items():
-                if object_type in object_definition:
-                    _watchers.append(wclass.decode(**{**class_keys[wclass.__name__], **object_definition, "key" : object_definition[object_type]}))
-                    break
-        return _watchers
+         # Load default key values from the Watch subclasses
+        if Watch.watch_classes is None:
+            Watch.watch_classes = {}
+            Watch.watch_class_keys = {}
 
-    @classmethod
-    def decode(cls, **kwargs):
-        # Basic decode method to set object attributes from arguments
-        o = cls()
+            for c in cls.__subclasses__():
+                watch_name = c.__name__.replace(cls.__name__, "").lower()
+                Watch.watch_classes[watch_name] = c
+                for x in c.__mro__[::-1]:
+                    Watch.watch_class_keys[watch_name] = {**Watch.watch_class_keys.get(watch_name, {}), **getattr(x, "keys", {})}
+                # Add the classname as a default key
+                Watch.watch_class_keys[watch_name][watch_name] = ""
+
+
+        # Get the watch type, which will always be the first kwarg
+        wtype = next(kwargs.keys().__iter__())
+        wvalue = kwargs[wtype]
+        if not wtype in Watch.watch_classes:
+            raise WatchException(wvalue, f"Unknown watch class {wtype}")
+
+        wkeys = Watch.watch_class_keys[wtype]
+        return Watch.watch_classes[wtype](**{
+            **wkeys, 
+            **{k: v for k, v in kwargs.items() if k in wkeys},
+            "key" : wvalue
+        })
+
+    def __init__(self, **kwargs):
+        # Generic init method to set the kwargs to instance variables
         for key, value in kwargs.items():
-            setattr(o, key, value)
-        return o
+            setattr(self, key, value)
 
     def apply_modifiers(self, modifiers, data, **kwargs):
         for modifier_data in modifiers:
@@ -289,8 +298,11 @@ class Watch:
 
         return check_in_cache(cache, self.key, selected_data)
 
+    def render(self):
+        return None
+
     def alert_message(self):
-        message = self.key
+        message = self.render() or self.key
         if self.comment is not None:
             message += "\n> " + "\n> ".join(self.comment.strip().splitlines()) + "\n"
         if getattr(self, "output_data", None) is not None:
@@ -303,8 +315,12 @@ class UrlWatch(Watch):
         "method" : "GET",
         "headers" : {},
         "data" : None, 
-        "code" : 200
+        "code" : 200,
+        "displayUrl" : ""
     }
+
+    def render(self):
+        return self.displayUrl
 
     def fetch(self):
         # Allow caching of URLs
@@ -334,13 +350,11 @@ class CmdWatch(Watch):
         return p.stdout
 
 class GroupWatch(Watch):
-    @classmethod
-    def decode(cls, **kwargs):
+    def __init__(self, **kwargs):
         objs = kwargs["group"]
         del kwargs["group"]
-        o = super().decode(**kwargs)
-        setattr(o, "group", Watch.load(objs))
-        return o
+        super().__init__(self, **kwargs)
+        setattr(self, "group", Watch.load(objs))
 
     def in_cache(self, cache, verbose=False):
         uncached_keys = []
@@ -353,7 +367,7 @@ class GroupWatch(Watch):
         return True
 
 def process(config, cache, verbose=False):
-    watches = Watch.load(config.get("watch", []))
+    watches = [Watch.load(**x) for x in config.get("watch", [])]
     for watch in watches:
         try:
             if not watch.in_cache(cache, verbose=verbose):

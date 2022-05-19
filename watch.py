@@ -6,6 +6,7 @@ import re
 import requests
 import subprocess
 import sys
+import typing
 import yaml
 
 import jq
@@ -27,7 +28,10 @@ def write_cache(filename, cache):
 
 def check_in_cache(cache, key, data):
     key_digest = hashlib.sha256(key.encode()).hexdigest()
-    data_digest = hashlib.sha256(data).hexdigest()
+    data_digest = hashlib.sha256()
+    for datum in data:
+        data_digest.update(datum)
+    data_digest = data_digest.hexdigest()
 
     # If the key_digest is not previously watched, or the data_digest does not match the cache, alert
     if cache["watches"].get(key_digest) != data_digest:
@@ -64,12 +68,14 @@ class WatchSelectorException(WatchException):
 class Modifier:
     modifier_classes = None
     modifier_class_keys = None
+    default_key = "value"
     keys = {
         "value" : (str, None)
     }
 
     @classmethod
     def load(cls, **kwargs):
+        # Load subclass default keys
         if Modifier.modifier_classes is None:
             Modifier.modifier_classes = {}
             Modifier.modifier_class_keys = {}
@@ -80,43 +86,66 @@ class Modifier:
                     Modifier.modifier_class_keys[modifier_name] = {**Modifier.modifier_class_keys.get(modifier_name, {}), **getattr(x, "keys", {})}
 
         # Obtain the modifier type either looking for the `type` key, or use the name of the only key if there is only one
+        # Allows for definitions such as:
+        #   - type: "regex"
+        #     value: ".*"
+        # Or
+        #   - regex: ".*"
         mtype = kwargs.get("type")
         if mtype is not None:
             del kwargs["type"]
         else:
             mtype = next(kwargs.keys().__iter__())
-            kwargs["value"] = kwargs[mtype]
+            mvalue = kwargs[mtype]
             del kwargs[mtype]
+            kwargs[Modifier.modifier_classes[mtype].default_key] = mvalue
         if mtype is None:
             raise ModifierException("No type for modifier")
 
+        # Initialise modifier from kwargs
         o = Modifier.modifier_classes[mtype]()
         for k, v in Modifier.modifier_class_keys[mtype].items():
             ktype, kdefault = v
             if k in kwargs:
+                # Cast as the correct type
                 val = kwargs[k] if isinstance(kwargs[k], ktype) else ktype(kwargs[k])
                 setattr(o, k, val)
             else:
                 setattr(o, k, kdefault)
         return o
 
+    def run(self, data:bytes) -> typing.List[bytes]:
+        raise Exception("Not Implemented")
+
 class RegexModifier(Modifier):
-    def run(self, data):
-        m = re.search(self.value.encode(), data, re.MULTILINE)
-        return m.group() if m else b''
+    default_key = "regex"
+    keys = {
+        "regex" : (str, ".*")
+    }
+
+    def run(self, data:bytes) -> typing.List[bytes]:
+        m = re.search(self.regex.encode(), data)
+        if m is None:
+            return [b'']
+        if len(m.groups()) == 0:
+            return [m.group()]
+        return list(m.groups())
 
 class JqModifier(Modifier):
-    def run(self, data):
+    def run(self, data:bytes) -> typing.List[bytes]:
         j = json.loads(data)
         output_lines = []
         for line in jq.compile(self.value).input(j).all():
-            output_lines.append(str(line))
-        return "\n".join(output_lines).encode()
+            if isinstance(line, str):
+                output_lines.append(line.encode())
+            else:
+                output_lines.append(json.dumps(line).encode())
+        return output_lines
 
 class CssModifier(Modifier):
-    def run(self, data):
+    def run(self, data:bytes) -> typing.List[bytes]:
         soup = BeautifulSoup(data, "html.parser")
-        return "\n".join([str(x) for x in soup.select(self.value)]).encode()
+        return [str(x).encode() for x in soup.select(self.value)]
 
 class BytesModifier(Modifier):
     keys = {
@@ -124,9 +153,8 @@ class BytesModifier(Modifier):
         "end" : (int, None)
     }
 
-    def run(self, data):
-        start, end = (pattern.split(":") + [""])[:2]
-        return data[self.start:self.end]
+    def run(self, data:bytes) -> typing.List[bytes]:
+        return [data[self.start:self.end]]
 
 class LinesModifier(Modifier):
     keys = {
@@ -135,26 +163,24 @@ class LinesModifier(Modifier):
     }
 
     def run(self, data):
-        return "".join(data.splitlines(keepends=True)[self.start:self.end])
+        return data.splitlines(keepends=True)[self.start:self.end]
 
 class NewModifier(Modifier):
     keys = {
         "key" : (str, None),
-        "cache" : (dict, {})
+        "cache" : (dict, {}) # This references the on disk cache
     }
 
-    def run(self, data):
+    def run(self, data:bytes) -> typing.List[bytes]:
         key_digest = hashlib.sha256(self.key.encode()).hexdigest()
-        lines = data.splitlines()
-        last_set = set(self.cache.setdefault("elements", {}).setdefault(key_digest, []))
-        lines_hash = [hashlib.sha256(x).hexdigest() for x in lines]
-        output_lines = []
+        cached_set = set(self.cache.setdefault("elements", {}).setdefault(key_digest, []))
 
-        for i, x in enumerate(lines_hash):
-            if x not in last_set:
-                output_lines.append(lines[i])
-        self.cache["elements"][key_digest] = lines_hash
-        return b'\n'.join(output_lines)
+        lines = data.splitlines()
+        data_digest = hashlib.sha256(data).hexdigest()
+        if not data_digest in cached_set:
+            self.cache["elements"][key_digest].append(data_digest)
+            return [data]
+        return []
 
 class SplitModifier(Modifier):
     keys = {
@@ -163,24 +189,28 @@ class SplitModifier(Modifier):
         "end" : (int, None)
     }
 
-    def run(self, data):
-        lines = data.decode().splitlines()
-        out_lines = []
-        for line in lines:
-            out_lines.append(self.sep.join(line.split(self.sep)[self.start:self.end]))
-        return "\n".join(out_lines).encode()
+    def run(self, data:bytes) -> typing.List[bytes]:
+        bsep = self.sep.encode()
+        return [bsep.join(data.split(bsep)[self.start:self.end])]
 
 class StripModifier(Modifier):
+    default_key = "chars"
     keys = {
-        "chars" : (str, "\t ")
+        "chars" : (str, "\t "),
     }
 
-    def run(self, data):
-        lines = data.decode().splitlines()
-        out_lines = []
-        for line in lines:
-            out_lines.append(line.strip(self.chars))
-        return "\n".join(out_lines).encode()
+    def run(self, data:bytes) -> typing.List[bytes]:
+        return [data.strip(self.chars.encode())]
+
+class ReplaceModifier(Modifier):
+    default_key = "regex"
+    keys = {
+        "regex" : (str, ".*"),
+        "replacement" : (str, "")
+    }
+
+    def run(self, data:bytes) -> typing.List[bytes]:
+        return [re.sub(self.regex.encode(), self.replacement.encode(), data)]
 
 
 class Watch:
@@ -220,33 +250,51 @@ class Watch:
     def apply_modifiers(self, modifiers, data, **kwargs):
         for modifier_data in modifiers:
             try:
-                data = Modifier.load(**modifier_data, **kwargs).run(data)
-            except ModifierException:
-                raise WatchSelectorException(self.key, f"Unknown selector {selector}")
+                modifier = Modifier.load(**modifier_data, **kwargs)
+            except ModifierException as e:
+                raise WatchSelectorException(self.key, f"Error parsing modifiers") from e
+
+            # Run the modifier over each datum, and flatpack the result
+            outdata = []
+            for datum in data:
+                result = modifier.run(datum)
+                outdata.extend([x for x in result if x is not None and len(x) > 0])
+            data = outdata
         return data
 
     def fetch(self, *args, **kwargs):
         raise WatchFetchException(self.key, "Not implemented")
 
     def in_cache(self, cache, verbose=False):
-        selected_data = self.apply_modifiers(self.selectors, self.fetch(), key=self.key, cache=cache)
-        self.output_data = self.apply_modifiers(self.output, selected_data, key=self.key, cache=cache) if len(self.output) else None
+        try:
+            selected_data = self.apply_modifiers(self.selectors, [self.fetch()], key=self.key, cache=cache)
+        except Exception as e:
+            raise WatchSelectorException(self.key, "Exception selecting data") from e
+
+        try:
+            self.output_data = self.apply_modifiers(self.output, selected_data, key=self.key, cache=cache) if len(self.output) else None
+        except Exception as e:
+            raise WatchSelectorException(self.key, "Exception selecting output data") from e
+
         if verbose:
-            vdata = "\n\t" + "\n\t".join((self.output_data or selected_data).decode().splitlines())
-            print(f"{self.key}:{vdata}\n")
+            vdata = b'\n\t'.join(self.output_data or selected_data).decode()
+            print(f"{self.key}:\n\t{vdata}\n")
         else:
             key_digest = hashlib.sha256(self.key.encode()).hexdigest()
-            data_digest = hashlib.sha256(selected_data).hexdigest()
+            data_digest = hashlib.sha256()
+            for datum in selected_data:
+                data_digest.update(datum)
+            data_digest = data_digest.hexdigest()
             print(f"{key_digest}:{data_digest}")
 
         return check_in_cache(cache, self.key, selected_data)
 
     def alert_message(self):
         message = self.key
-        if getattr(self, "output_data", None) is not None:
-            message += "\n* " + "\n* ".join(self.output_data.decode().strip().splitlines())
         if self.comment is not None:
-            message += "\n> " + "\n> ".join(self.comment.strip().splitlines())
+            message += "\n> " + "\n> ".join(self.comment.strip().splitlines()) + "\n"
+        if getattr(self, "output_data", None) is not None:
+            message += "\n* " + b'\n* '.join(x.strip() for x in self.output_data).decode()
         return message
 
 class UrlWatch(Watch):
@@ -315,6 +363,7 @@ def process(config, cache, verbose=False):
             if not verbose:
                 key = hashlib.sha256(key.encode()).hexdigest()
             sys.stderr.write(f"Error processing {key}:\n\t{e.__class__.__name__}: {e}\n")
+            print(e.with_traceback())
             continue
 
 def replace_var(vars, var):

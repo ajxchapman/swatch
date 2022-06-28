@@ -6,16 +6,18 @@ import typing
 import jq
 from bs4 import BeautifulSoup
 
+from src.loadable import Loadable
+
 class ModifierException(Exception):
     pass
 
-class Modifier:
+class Modifier(Loadable):
     default_key = "value"
     keys = {
         "value" : (str, None)
     }
 
-    def run_all(self, data:list) -> list:
+    def run_all(self, data:typing.List[bytes]) -> typing.List[bytes]:
         # Run the modifier over each datum, and flatpack the result
         outdata = []
         for datum in data:

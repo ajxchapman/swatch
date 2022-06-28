@@ -1,6 +1,6 @@
 import unittest
 
-from watch import Modifier
+from src.modifier import Modifier
 
 class TestSplitModifier(unittest.TestCase):
     def test_1(self):

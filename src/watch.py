@@ -1,10 +1,12 @@
 import hashlib
 import requests
 import subprocess
+import typing
 
 from src.loadable import Loadable
 from src.modifier import Modifier, ModifierException
-from src.diff import Diff
+from src.match import Match, MatchException
+from src.context import WatchContext
 
 def check_in_cache(cache, key, data):
     key_digest = hashlib.sha256(key.encode()).hexdigest()
@@ -30,64 +32,54 @@ class WatchFetchException(WatchException):
 class WatchSelectorException(WatchException):
     pass
 
-class WatchContext:
-    def __init__(self):
-        self.output = None
-        self.outputs = []
-        self.variables = {}
-
-    def add_output(self, output):
-        self.output = output
-        self.outputs.append(output)
-
-    def add_variable(self, key, value):
-        self.variables[key] = value
-
-    def expand_context(self, value):
-        pass
-
 
 class Watch(Loadable):
     keys = {
         "selectors" : (list, []),
+        "match" : (dict, {"type" : "cache"}),
         "comment" : (str, None),
     }
 
-    def apply_modifiers(self, modifiers, data, **kwargs):
-        for modifier_data in modifiers:
+    def apply_selectors(self, ctx: WatchContext, data: typing.List[bytes]) -> typing.List[bytes]:
+        for selector_kwargs in self.selectors:
             try:
-                modifier = Modifier.load(**modifier_data, **kwargs)
+                modifier: Modifier = Modifier.load(**selector_kwargs)
             except ModifierException as e:
-                raise WatchSelectorException(self.key, f"Error parsing modifiers") from e
+                raise WatchException(self.key, f"Error parsing modifier: {e}") from e
 
-            data = modifier.run_all(data)
+            data = modifier.run_all(ctx, data)
         return data
 
-    def fetch(self, ctx, *args, **kwargs):
+    def fetch_data(self, ctx: WatchContext, *args, **kwargs) -> typing.List[bytes]:
+        """
+        Return the raw data from the Watch
+        """
         raise WatchFetchException(self.key, "Not implemented")
 
-    def in_cache(self, ctx, cache, verbose=False):
+    def process_data(self, ctx: WatchContext) -> typing.List[bytes]:
+        """
+        Return the processed data from the Watch
+        """
         try:
-            selected_data = self.apply_modifiers(self.selectors, [self.fetch(ctx)], key=self.key, cache=cache)
-            # self.output_data = self.apply_modifiers(self.output, selected_data, key=self.key, cache=cache) if len(self.output) else None
+            ctx.set_variable("key", self.hash)
+            data = self.fetch_data(ctx)
+            selected_data = self.apply_selectors(ctx, [data])
         except (WatchFetchException, WatchSelectorException) as e:
             raise e
         except Exception as e:
             raise WatchSelectorException(self.key, f"Exception selecting data: {e}") from e
 
-        cached = check_in_cache(cache, self.key, selected_data)
-        if verbose:
-            vdata = b'\n\t'.join(self.output_data or selected_data).decode()
-            print(f"{self.key}:{cached}\n\t{vdata}\n")
-        else:
-            key_digest = hashlib.sha256(self.key.encode()).hexdigest()
-            data_digest = hashlib.sha256()
-            for datum in selected_data:
-                data_digest.update(datum)
-            data_digest = data_digest.hexdigest()
-            print(f"{key_digest}:{data_digest}:{cached}")
+        return selected_data
 
-        return cached
+    def match_data(self, ctx: WatchContext, data: typing.List[bytes]) -> bool:
+        """
+        Return a boolean indicating whether the processed data matches the configured match
+        """
+        try:
+            match = Match.load(**self.match)
+        except MatchException as e:
+            raise WatchException(self.key, f"Error parsing match: {e}") from e
+        return match.match(ctx, data)
 
     def render(self):
         return self.key
@@ -108,22 +100,17 @@ class UrlWatch(Watch):
         "headers" : {},
         "data" : None, 
         "code" : None,
-        "displayUrl" : ""
     }
 
     def render(self):
-        return self.displayUrl or self.url
+        return self.url
 
-    def fetch(self, ctx):
-        # Allow caching of URLs
-        r = UrlWatch.cache.get(self.url)
-        if r is None:
-            r = requests.request(
-                self.method,
-                self.url,
-                headers=self.headers,
-                data=self.data)
-            UrlWatch.cache[self.url] = r
+    def fetch_data(self, ctx: WatchContext):
+        r = requests.request(
+            self.method,
+            self.url,
+            headers=self.headers,
+            data=self.data)
         if self.code is not None and r.status_code != self.code:
             raise WatchFetchException(self.key, f"Status code {r.status_code} != {self.code}")
         return r.content
@@ -135,9 +122,9 @@ class CmdWatch(Watch):
         "return_code" : 0
     }
 
-    def fetch(self, ctx):
+    def fetch_data(self, ctx):
         p = subprocess.run([self.shell], input=self.cmd.encode(), timeout=self.timeout, capture_output=True)
-        if p.returncode != self.return_code:
+        if self.return_code is not None and p.returncode != self.return_code:
             raise WatchFetchException(self.key, f"Return code {p.returncode} != {self.return_code}")
         return p.stdout
 
@@ -147,6 +134,8 @@ class GroupWatch(Watch):
     OPERATOR_LAST = "last"
 
     keys = {
+        "selectors": (None, []), # Selectors do not make sense for 'group'
+        "match": (None, None), # Match does not make sense for 'group'
         "operator" : "or"
     }
 
@@ -157,18 +146,30 @@ class GroupWatch(Watch):
     def render(self):
         return "Group[" + ", ".join([x.render() for x in self.group]) + "]"
 
-    def in_cache(self, ctx, cache, verbose=False):
-        result = [(x.key, x.in_cache(ctx, cache, verbose=verbose)) for x in self.group]
+    def process_data(self, ctx: WatchContext, verbose: bool = False) -> typing.List[bytes]:
+        return []
+
+    def match_data(self, ctx: WatchContext, data: typing.List[bytes]) -> bool:
+        match = False
+        for x in self.group:
+            xmatch = x.match_data(ctx, x.process_data(ctx))
+            # Early exit of and operator
+            if self.operator in GroupWatch.OPERATOR_ALL and not xmatch:
+                return False
+            match |= xmatch
+
         if self.operator in GroupWatch.OPERATOR_ALL:
-            return all([x[1] for x in result])
+            return True
         elif self.operator in GroupWatch.OPERATOR_ANY:
-            return any([x[1] for x in result])
+            return match
         elif self.operator == GroupWatch.OPERATOR_LAST:
-            return result[-1][1]
+            return xmatch
         raise WatchFetchException(f"Unknown operator '{self.operator}'")
 
 class ConditionalWatch(Watch):
     keys = {
+        "selectors": (None, []), # Selectors do not make sense for 'conditional'
+        "match": (None, None), # Match does not make sense for 'conditional'
         "then" : {}
     }
 
@@ -180,7 +181,11 @@ class ConditionalWatch(Watch):
     def render(self):
         return "Conditional(" + self.conditional.render() + ") {" + self.then.render() + "}"
 
-    def in_cache(self, ctx, cache, verbose=False):
-        if not self.conditional.in_cache(ctx, cache, verbose=verbose):
-            return self.then.in_cache(ctx, cache, verbose=verbose)
-        return True
+    def process_data(self, ctx: WatchContext, verbose: bool = False) -> typing.List[bytes]:
+        return []
+
+    def match_data(self, ctx: WatchContext, data: typing.List[bytes]) -> bool:
+        match = self.conditional.match_data(ctx, self.conditional.process_data(ctx))
+        if match:
+            return self.then.match_data(ctx, self.then.process_data(ctx))
+        return False

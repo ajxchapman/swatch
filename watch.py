@@ -45,9 +45,10 @@ def process(config, cache, verbose=False):
     for watch in watches:
         # Create a new context and temporary working directory for each watch
         ctx = WatchContext()
+        ctx.set_variable("cache", cache)
         with tempfile.TemporaryDirectory() as tmpdir:
             os.chdir(tmpdir)
-            ctx.add_variable("tmpdir", tmpdir)
+            ctx.set_variable("tmpdir", tmpdir)
             try:
                 if not watch.in_cache(ctx, cache, verbose=verbose):
                     alert(watch.alert_message(), alert_hook=config.get("hook"))

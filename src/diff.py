@@ -1,11 +1,11 @@
 import difflib
 
-import loadable
+from src.loadable import Loadable
 
 class DiffException(Exception):
     pass
 
-class Diff(loadable.Loadable):
+class Diff(Loadable):
     def diff(self, old, new):
         raise DiffException("Not Implemented")
 

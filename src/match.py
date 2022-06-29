@@ -26,6 +26,6 @@ class CacheMatch(Match):
         data_digest = data_digest.hexdigest()
 
         if cache.get_entry(key_digest) != data_digest:
-            cache.set_entry(key_digest, data_digest)
+            cache.put_entry(key_digest, data_digest)
             return True
         return False

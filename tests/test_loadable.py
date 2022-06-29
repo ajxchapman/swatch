@@ -18,7 +18,7 @@ class Base1(Loadable1):
         "key7" : (int, "value7"),
     }
 
-class TestReplaceModifier(unittest.TestCase):
+class TestLoadable(unittest.TestCase):
     def test_1(self):
         o = Loadable1.load(type="Base1", key5=5, key6="6")
         self.assertEqual(o.key1, "value1")

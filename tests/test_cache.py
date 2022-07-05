@@ -7,7 +7,7 @@ from src.cache import Cache
 class TestCache(unittest.TestCase):
     def setUp(self) -> None:
         rndname = "".join(random.choices("0123456789abcdef", k=12))
-        self.cache = Cache(f"/tmp/{rndname}.tar.gz")
+        self.cache = Cache(cache_path=f"/tmp/{rndname}.tar.gz")
         self.cache.put_entry("entrykey", "data")
         self.cache.put_file("filekey", b'data')
     

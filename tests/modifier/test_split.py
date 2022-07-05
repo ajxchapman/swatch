@@ -1,10 +1,10 @@
 import unittest
 
-from src.modifier import Modifier
+from src.selector import Selector
 
 class TestSplitModifier(unittest.TestCase):
     def test_1(self):
-        m = Modifier.load(type="split", sep=",")
+        m = Selector.load(type="split", sep=",")
         data = b'1,2,3,4'
         result = m.run(data)
         self.assertEqual(len(result), 4)

@@ -11,7 +11,7 @@ class Diff(Loadable):
 
 class NewDiff(Diff):
     def diff(self, old, new):
-        oldset = set(old)
+        oldset = set(old or [])
         new_entries = []
         for x in new:
             if not x in oldset:
@@ -21,8 +21,4 @@ class NewDiff(Diff):
 
 class UnifiedDiff(Diff):
     def diff(self, old, new):
-        return difflib.diff_bytes(difflib.unified_diff, old, new)
-
-class HashDiff(Diff):
-    def diff(self, old, new):
-        pass
+        return difflib.diff_bytes(difflib.unified_diff, old or [], new)

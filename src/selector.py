@@ -8,10 +8,10 @@ from bs4 import BeautifulSoup
 
 from src.loadable import Loadable
 
-class ModifierException(Exception):
+class SelectorException(Exception):
     pass
 
-class Modifier(Loadable):
+class Selector(Loadable):
     default_key = "value"
     keys = {
         "value" : (str, None)
@@ -28,7 +28,7 @@ class Modifier(Loadable):
     def run(self, data:bytes) -> typing.List[bytes]:
         raise Exception("Not Implemented")
 
-class RegexModifier(Modifier):
+class RegexSelector(Selector):
     default_key = "regex"
     keys = {
         "regex" : (str, ".*")
@@ -42,7 +42,7 @@ class RegexModifier(Modifier):
             return [m.group()]
         return list(m.groups())
 
-class JqModifier(Modifier):
+class JqSelector(Selector):
     def run(self, data:bytes) -> typing.List[bytes]:
         j = json.loads(data)
         output_lines = []
@@ -53,12 +53,12 @@ class JqModifier(Modifier):
                 output_lines.append(json.dumps(line).encode())
         return output_lines
 
-class CssModifier(Modifier):
+class CssSelector(Selector):
     def run(self, data:bytes) -> typing.List[bytes]:
         soup = BeautifulSoup(data, "html.parser")
         return [str(x).encode() for x in soup.select(self.value)]
 
-class BytesModifier(Modifier):
+class BytesSelector(Selector):
     keys = {
         "start" : (int, 0),
         "end" : (int, None)
@@ -67,11 +67,11 @@ class BytesModifier(Modifier):
     def run(self, data:bytes) -> typing.List[bytes]:
         return [data[self.start:self.end]]
 
-class LinesModifier(Modifier):
+class LinesSelector(Selector):
     def run(self, data):
         return data.splitlines(keepends=True)
 
-class SplitModifier(Modifier):
+class SplitSelector(Selector):
     keys = {
         "sep" : (str, ","),
         "start" : (int, 0),
@@ -82,7 +82,7 @@ class SplitModifier(Modifier):
         bsep = self.sep.encode()
         return data.split(bsep)[self.start:self.end]
 
-class NewModifier(Modifier):
+class NewSelector(Selector):
     keys = {
         "key" : (str, None),
         "cache" : (dict, {}) # This references the on disk cache
@@ -99,16 +99,16 @@ class NewModifier(Modifier):
             return [data]
         return []
 
-class StripModifier(Modifier):
+class StripSelector(Selector):
     default_key = "chars"
     keys = {
-        "chars" : (str, "\t "),
+        "chars" : (str, "\r\n\t "),
     }
 
     def run(self, data:bytes) -> typing.List[bytes]:
         return [data.strip(self.chars.encode())]
 
-class ReplaceModifier(Modifier):
+class ReplaceSelector(Selector):
     default_key = "regex"
     keys = {
         "regex" : (str, ".*"),
@@ -118,11 +118,11 @@ class ReplaceModifier(Modifier):
     def run(self, data:bytes) -> typing.List[bytes]:
         return [re.sub(self.regex.encode(), self.replacement.encode(), data)]
 
-class IndexModifier(Modifier):
+class IndexSelector(Selector):
     keys = {
         "start" : (int, 0),
         "end" : (int, None)
     }
 
-    def run_all(self, data:list) -> list:
+    def run_all(self, data:typing.List[bytes]) -> list:
         return data[self.start:self.end]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 import hashlib
+import types
 
 
 class LoadableException(Exception):
@@ -26,7 +27,6 @@ class Loadable:
                 }
                 for x in c.__mro__[::-1]:
                     cls.__class_keys[scls_name] = {**cls.__class_keys.get(scls_name, {}), **getattr(x, "keys", {})}
-                
 
         # Obtain the loadable type from the "type" kwarg or the first kwarg
         # Allows for definitions such as:
@@ -61,7 +61,11 @@ class Loadable:
                 # Cast as the correct type
                 if ktype is None:
                     raise LoadableException(f"Unexpected argument '{k}'")
-                lkwargs[k] = kwargs[k] if isinstance(kwargs[k], ktype) else ktype(kwargs[k])
+                
+                if isinstance(ktype, types.FunctionType):
+                    lkwargs[k] = ktype(kwargs[k])
+                else:
+                    lkwargs[k] = kwargs[k] if isinstance(kwargs[k], ktype) else ktype(kwargs[k])
             else:
                 lkwargs[k] = kdefault
         return lcls(**lkwargs)

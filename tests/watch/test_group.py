@@ -1,7 +1,6 @@
-import typing
 import unittest
 
-from src.watch import Watch, WatchContext
+from src.watch import Watch, Context
 
 class TestGroupWatch(unittest.TestCase):
     def test_and_success(self):
@@ -13,7 +12,7 @@ class TestGroupWatch(unittest.TestCase):
             "match" : {"type" : "true"}
         }], operator="all")
         
-        ctx = WatchContext()
+        ctx = Context()
         result = w.match_data(ctx, w.process_data(ctx))
         self.assertEqual(result, True)
         self.assertEqual(w.group[0].count, 1)
@@ -28,7 +27,7 @@ class TestGroupWatch(unittest.TestCase):
             "match" : {"type" : "true"}
         }], operator="all")
         
-        ctx = WatchContext()
+        ctx = Context()
         result = w.match_data(ctx, w.process_data(ctx))
         self.assertEqual(result, False)
         self.assertEqual(w.group[0].count, 1)
@@ -43,7 +42,7 @@ class TestGroupWatch(unittest.TestCase):
             "match" : {"type" : "false"}
         }], operator="any")
         
-        ctx = WatchContext()
+        ctx = Context()
         result = w.match_data(ctx, w.process_data(ctx))
         self.assertEqual(result, True)
         self.assertEqual(w.group[0].count, 1)
@@ -58,7 +57,7 @@ class TestGroupWatch(unittest.TestCase):
             "match" : {"type" : "false"}
         }], operator="any")
         
-        ctx = WatchContext()
+        ctx = Context()
         result = w.match_data(ctx, w.process_data(ctx))
         self.assertEqual(result, False)
         self.assertEqual(w.group[0].count, 1)
@@ -73,7 +72,7 @@ class TestGroupWatch(unittest.TestCase):
             "match" : {"type" : "true"}
         }], operator="last")
         
-        ctx = WatchContext()
+        ctx = Context()
         result = w.match_data(ctx, w.process_data(ctx))
         self.assertEqual(result, True)
         self.assertEqual(w.group[0].count, 1)
@@ -89,7 +88,7 @@ class TestGroupWatch(unittest.TestCase):
             "match" : {"type" : "false"}
         }], operator="last")
         
-        ctx = WatchContext()
+        ctx = Context()
         result = w.match_data(ctx, w.process_data(ctx))
         self.assertEqual(result, False)
         self.assertEqual(w.group[0].count, 1)

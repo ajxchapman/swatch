@@ -1,7 +1,6 @@
-import typing
 import unittest
 
-from src.watch import Watch, WatchContext
+from src.watch import Watch, Context
 
 
 class TestConditionalWatch(unittest.TestCase):
@@ -14,10 +13,10 @@ class TestConditionalWatch(unittest.TestCase):
             "match" : {"type" : "true"}
         })
         
-        ctx = WatchContext()
+        ctx = Context()
         result = w.match_data(ctx, w.process_data(ctx))
         self.assertEqual(result, True)
-        self.assertEqual(w.conditional.count, 1)
+        self.assertEqual(w.conditional.group[0].count, 1)
         self.assertEqual(w.then.count, 1)
 
     def test_failure(self):
@@ -29,8 +28,8 @@ class TestConditionalWatch(unittest.TestCase):
             "match" : {"type" : "true"}
         })
         
-        ctx = WatchContext()
+        ctx = Context()
         result = w.match_data(ctx, w.process_data(ctx))
         self.assertEqual(result, False)
-        self.assertEqual(w.conditional.count, 1)
+        self.assertEqual(w.conditional.group[0].count, 1)
         self.assertEqual(w.then.count, 0)

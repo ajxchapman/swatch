@@ -2,3 +2,4 @@ requests
 pyyaml
 jq
 beautifulsoup4
+jinja2

@@ -121,6 +121,10 @@ class UrlWatch(Watch):
     def render(self):
         return self.url
 
+    def get_comment(self, ctx: Context):
+        ctx.set_variable("URL", self.url)
+        return super().get_comment(ctx)
+
     def fetch_data(self, ctx: Context) -> bytes:
         ex_url = ctx.expand_context(self.url)
         ex_headers = ctx.expand_context(self.headers)

@@ -4,13 +4,12 @@ import requests
 import subprocess
 import typing
 
-from jinja2 import Environment, BaseLoader
-
 from src.context import Context
 from src.diff import Diff
 from src.loadable import Loadable
 from src.match import Match, MatchException
 from src.selector import Selector, SelectorException
+from src.template import template_render
 
 class WatchException(Exception):
     def __init__(self, key, *args, **kwargs):
@@ -103,10 +102,7 @@ class Watch(Loadable):
                 ctx.get_variable("cache").put_file(self.hash, data)
                 data = diff.diff(old_data, data)
             
-            env = Environment(loader=BaseLoader())
-            env.filters["json"] = lambda x: json.loads(x if isinstance(x, str) else x.decode())
-            template = env.from_string(self.comment)
-            return [template.render(ctx.variables, data=data)]
+            return [template_render(self.comment, ctx.variables, data=data)]
         return []
 
 class UrlWatch(Watch):

@@ -1,0 +1,40 @@
+name: run
+
+on:
+  schedule:
+    - cron: "15 2,8,14,20 * * *"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Download artifacts
+        run: |
+          gh api -q '.artifacts[0].archive_download_url' /repos/${{ github.repository }}/actions/artifacts
+          curl -sLo artifact.zip -H "Authorization: token ${GH_TOKEN}" $(gh api -q '.artifacts[0].archive_download_url' /repos/${{ github.repository }}/actions/artifacts)
+          unzip artifact.zip && rm artifact.zip
+        continue-on-error: true
+
+      - name: Install prerequsites
+        run: pip3 install -r requirements.txt
+
+      - name: Checkout watch repository
+        if: ${{ secrets.SOURCEMON_WATCH_REPO != null }}
+        uses:
+        with: actions/checkout@v3
+          repository: ${{ secrets.SOURCEMON_WATCH_REPO }}
+          ssh-key: ${{ secrets.SOURCEMON_WATCH_REPO_KEY || '' }}
+          token: ${{ secrets.SOURCEMON_WATCH_REPO_TOKEN || '' }}
+          path: watches
+
+      - name: Execute watch
+        run: python3 ./watch.py --cache ./cache.tar.gz --input ./watches/**/*.y*ml
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: cache.tar.gz
+          path: ./cache.tar.gz
+          retention-days: 7

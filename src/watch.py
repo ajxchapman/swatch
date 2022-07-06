@@ -148,14 +148,18 @@ class UrlWatch(Watch):
 
 class CmdWatch(Watch):
     keys = {
-        "shell" : "/bin/sh",
-        "timeout" : 30,
-        "return_code" : 0
+        "shell" : (str, "/bin/sh"),
+        "sudo": (bool, False),
+        "timeout" : (int, 30),
+        "return_code" : (int, 0)
     }
 
     def fetch_data(self, ctx: Context) -> bytes:
         ex_cmd = ctx.expand_context(self.cmd)
-        p = subprocess.run([self.shell], input=ex_cmd.encode(), timeout=self.timeout, capture_output=True)
+        shell = [self.shell]
+        if self.sudo:
+            shell = ["sudo"] + shell
+        p = subprocess.run(shell, input=ex_cmd.encode(), timeout=self.timeout, capture_output=True)
         if self.return_code is not None and p.returncode != self.return_code:
             raise WatchFetchException(self.hash, f"Return code {p.returncode} != {self.return_code}")
         return [p.stdout]

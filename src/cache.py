@@ -51,7 +51,7 @@ class Cache:
 
             if os.path.isfile(os.path.join(self.cache_dir, "cache.yaml")):
                 with open(os.path.join(self.cache_dir, "cache.yaml")) as f:
-                    cache = yaml.safe_load(f)
+                    self.cache = yaml.safe_load(f)
 
         if not isinstance(self.cache, dict):
             self.cache = {}

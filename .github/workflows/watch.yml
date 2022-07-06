@@ -23,8 +23,8 @@ jobs:
 
       - name: Checkout watch repository
         if: ${{ secrets.SOURCEMON_WATCH_REPO != null }}
-        uses:
-        with: actions/checkout@v3
+        uses: actions/checkout@v3
+        with: 
           repository: ${{ secrets.SOURCEMON_WATCH_REPO }}
           ssh-key: ${{ secrets.SOURCEMON_WATCH_REPO_KEY || '' }}
           token: ${{ secrets.SOURCEMON_WATCH_REPO_TOKEN || '' }}

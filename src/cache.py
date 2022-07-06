@@ -8,20 +8,9 @@ import tempfile
 import typing
 import yaml
 
+from cryptography.fernet import Fernet
+
 KEY_EXPR = r"^[A-Za-z0-9_-]+$"
-
-# def check_in_cache(cache, key, data):
-#     key_digest = hashlib.sha256(key.encode()).hexdigest()
-#     data_digest = hashlib.sha256()
-#     for datum in data:
-#         data_digest.update(datum)
-#     data_digest = data_digest.hexdigest()
-
-#     # If the key_digest is not previously watched, or the data_digest does not match the cache, alert
-#     if cache["watches"].get(key_digest) != data_digest:
-#         cache["watches"][key_digest] = data_digest
-#         return False
-#     return True
 
 class CacheException(Exception):
     pass
@@ -37,11 +26,12 @@ def json_decode(obj: dict) -> object:
     return obj
 
 class Cache:
-    def __init__(self, cache_path: str =None):
+    def __init__(self, cache_path: str=None, encryption_key: bytes=None):
         self.cache_path = cache_path
         self.cache_dir = tempfile.mkdtemp()
         self.cache = {}
         self.closed = False
+        self.encryptor = Fernet(encryption_key) if encryption_key is not None else None
 
         if self.cache_path is not None and os.path.isfile(self.cache_path):
             p = subprocess.run(["tar", "-C", self.cache_dir, "-xzf", self.cache_path])
@@ -79,14 +69,20 @@ class Cache:
 
         if os.path.isfile(os.path.join(self.cache_dir, key)):
             with open(os.path.join(self.cache_dir, key), "rb") as f:
-                return json.load(f, object_hook=json_decode)
+                data = f.read()
+                if self.encryptor is not None:
+                    data = self.encryptor.decrypt(data)
+                return json.loads(data, object_hook=json_decode)
 
     def put_file(self, key: str, data: typing.List[bytes]) -> None:
         if not re.match(KEY_EXPR, key):
             raise CacheException(f"Invalid cache key: '{key}'")
         
-        with open(os.path.join(self.cache_dir, key), "w") as f:
-            json.dump(data, f, default=json_encode)
+        with open(os.path.join(self.cache_dir, key), "wb") as f:
+            _data = json.dumps(data, default=json_encode).encode()
+            if self.encryptor is not None:
+                _data = self.encryptor.encrypt(_data)
+            f.write(_data)
 
     def get_entry(self, key: str) -> str:
         if not re.match(KEY_EXPR, key):

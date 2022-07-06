@@ -83,7 +83,7 @@ if __name__ == "__main__":
     if args.test:
         process(config, Cache(cache_path=None), verbose=args.verbose)
     else:
-        cache = Cache(cache_path=args.cache)
+        cache = Cache(cache_path=args.cache, encryption_key=config["config"].get("key"))
         try:
             process(config, cache, verbose=args.verbose)
         finally:

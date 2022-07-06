@@ -3,3 +3,4 @@ pyyaml
 jq
 beautifulsoup4
 jinja2
+cryptography

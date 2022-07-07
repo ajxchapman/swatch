@@ -1,11 +1,10 @@
 import json
 import os
 import requests
+import signal
 import subprocess
 import typing
 
-import traceback
-import sys
 
 from src.context import Context
 from src.diff import Diff
@@ -73,26 +72,19 @@ class Watch(Loadable):
         ctx.set_variable("key", self.hash)
         try:
             data = self.fetch_data(ctx)
+            selected_data = self.apply_selectors(ctx, data)
         except (WatchFetchException, WatchSelectorException) as e:
             raise e
         except Exception as e:
-            raise WatchSelectorException(ctx.get_variable("key"), f"Exception fetching data: {e}") from e
+            raise WatchSelectorException(self.hash, f"Exception processing watch: {e}") from e
         finally:
              # Execute the `after` step if it exists
             if self.after is not None:
                 watch = Watch.load(**{**self.after, "match": "none"})
                 watch.fetch_data(ctx)
 
-        try:
-            selected_data = self.apply_selectors(ctx, data)
-        except (WatchFetchException, WatchSelectorException) as e:
-            raise e
-        except Exception as e:
-            raise WatchSelectorException(ctx.get_variable("key"), f"Exception selecting data: {e}") from e
-
         if self.store is not None:
             ctx.set_variable(self.store, selected_data)
-
         ctx.set_variable(self.hash, selected_data)
 
         return selected_data
@@ -167,7 +159,7 @@ class CmdWatch(Watch):
     keys = {
         "shell" : (str, "/bin/sh"),
         "sudo": (bool, False),
-        "timeout" : (int, 30),
+        "timeout" : (lambda x: x if x is None else int(x), 30),
         "return_code" : (lambda x: x if x is None else int(x), 0),
         "output" : (lambda x: x if x in ["stdout", "stderr", "both"] else "stdout", "stdout")
     }
@@ -178,27 +170,24 @@ class CmdWatch(Watch):
         if self.sudo:
             shell = ["sudo"] + shell
 
-        print("Command running")
         try:
-            p = subprocess.run(shell, input=ex_cmd.encode(), timeout=self.timeout, capture_output=True)
-        except Exception as e:
-            print("Command error")
-            print(e)
-            traceback.print_tb(e.__traceback__, file=sys.stdout)
+            p = subprocess.Popen(shell, start_new_session=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = p.communicate(ex_cmd.encode(), timeout=self.timeout)
+        except subprocess.TimeoutExpired:
+            if self.sudo:
+                subprocess.run(["sudo", "/bin/kill", "--", f"-{os.getpgid(p.pid)}"])
+            else:
+                os.killpg(os.getpgid(p.pid), signal.SIGTERM)
+            raise WatchFetchException(self.key, "Command Timeout")
 
-        print("Command finished")
         if self.return_code is not None and p.returncode != self.return_code:
             raise WatchFetchException(self.hash, f"Return code {p.returncode} != {self.return_code}")
 
-        print("Command output:")
-        print(p.stdout)
-        print(p.stderr)
-
         if self.output == "stderr":
-            return [p.stderr]
+            return [stderr]
         elif self.output == "both":
-            return [p.stdout, p.stderr]
-        return [p.stdout]
+            return [stdout, stderr]
+        return [stdout]
 
 class GroupWatch(Watch):
     OPERATOR_ALL = ("all", "and")

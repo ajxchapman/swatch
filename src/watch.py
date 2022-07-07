@@ -43,6 +43,7 @@ class Watch(Loadable):
         "match" : (lambda x: x if isinstance(x, dict) else {"type" : x}, {"type" : "cache"}),
         "diff" : (lambda x: x if isinstance(x, dict) else {"type" : x}, None),
         "comment" : (str, None),
+        "version" : 1 # For cache busting
     }
 
     def apply_selectors(self, ctx: Context, data: typing.List[bytes]) -> typing.List[bytes]:

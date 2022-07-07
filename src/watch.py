@@ -67,9 +67,20 @@ class Watch(Loadable):
         """
         Return the processed data from the Watch
         """
+        ctx.set_variable("key", self.hash)
         try:
-            ctx.set_variable("key", self.hash)
             data = self.fetch_data(ctx)
+        except (WatchFetchException, WatchSelectorException) as e:
+            raise e
+        except Exception as e:
+            raise WatchSelectorException(ctx.get_variable("key"), f"Exception fetching data: {e}") from e
+        finally:
+             # Execute the `after` step if it exists
+            if self.after is not None:
+                watch = Watch.load(**{**self.after, "match": "none"})
+                watch.fetch_data(ctx)
+
+        try:
             selected_data = self.apply_selectors(ctx, data)
         except (WatchFetchException, WatchSelectorException) as e:
             raise e
@@ -78,12 +89,6 @@ class Watch(Loadable):
 
         if self.store is not None:
             ctx.set_variable(self.store, selected_data)
-
-        # Execute the `after` step if it exists
-        if self.after is not None:
-            print(f"Running after '{self.after}'")
-            watch = Watch.load(**{**self.after, "match": "none"})
-            watch.fetch_data(ctx)
 
         ctx.set_variable(self.hash, selected_data)
 

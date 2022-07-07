@@ -8,4 +8,4 @@ class TestStoreWatch(unittest.TestCase):
         
         ctx = Context()
         w.process_data(ctx)
-        self.assertEqual(ctx.get_variable("VALUE"), "123")
+        self.assertListEqual(ctx.get_variable("VALUE"), [b'123'])

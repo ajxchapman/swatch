@@ -152,7 +152,7 @@ class CmdWatch(Watch):
         "shell" : (str, "/bin/sh"),
         "sudo": (bool, False),
         "timeout" : (int, 30),
-        "return_code" : (int, 0),
+        "return_code" : (lambda x: x if x is None else int(x), 0),
         "output" : (lambda x: x if x in ["stdout", "stderr", "both"] else "stdout", "stdout")
     }
 

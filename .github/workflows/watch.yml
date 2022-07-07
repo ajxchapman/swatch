@@ -1,6 +1,7 @@
 name: run
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: "15 2,8,14,20 * * *"
 
@@ -22,7 +23,10 @@ jobs:
         run: pip3 install -r requirements.txt
 
       - name: Checkout watch repository
-        if: ${{ secrets.SOURCEMON_WATCH_REPO != null }}
+        # Work-around secrets not accessible in conditionals as per https://github.com/actions/runner/issues/520
+        env:
+          SOURCEMON_WATCH_REPO: ${{ secrets.SOURCEMON_WATCH_REPO }}
+        if: ${{ env.SOURCEMON_WATCH_REPO != null }}
         uses: actions/checkout@v3
         with: 
           repository: ${{ secrets.SOURCEMON_WATCH_REPO }}

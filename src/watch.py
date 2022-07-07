@@ -202,7 +202,7 @@ class GroupWatch(Watch):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.group = [Watch.load(**x) for x in self.group]
+        self.group = [Watch.load(**{**x, "version" : self.version}) for x in self.group]
         self.matched = []
 
     def render(self):
@@ -248,8 +248,8 @@ class ConditionalWatch(Watch):
         super().__init__(**kwargs)
         if not isinstance(self.conditional, list):
             self.conditional = [self.conditional]
-        self.conditional = Watch.load(group=self.conditional, operator=self.operator)
-        self.then = Watch.load(**self.then)
+        self.conditional = Watch.load(group=self.conditional, operator=self.operator, version=self.version)
+        self.then = Watch.load(**{**self.then, "versoion": self.version})
         self.matched = None
 
     def render(self):

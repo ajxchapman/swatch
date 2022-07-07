@@ -42,7 +42,10 @@ def process(config, cache, verbose=False):
                 ctx.set_variable("tmpdir", tmpdir)
                 try:
                     if watch.match_data(ctx, watch.process_data(ctx)):
+                        print(f"{watch.hash}:True")
                         alert(render_comment(watch.get_comment(ctx)), config["config"].get("hook"))
+                    else:
+                        print(f"{watch.hash}:False")
                 except WatchException as e:
                     key = e.key
                     print(f"Error processing {key}:\n\t{e.__class__.__name__}: {e}")

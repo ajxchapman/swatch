@@ -6,8 +6,13 @@ env = None
 def init_env():
     global env
     if env is None:
-         env = Environment(loader=BaseLoader(), finalize=finalize)
-         env.filters["json"] = lambda x: json.loads(x if isinstance(x, str) else x.decode())
+        env = Environment(
+            loader=BaseLoader(), 
+            finalize=finalize,
+            trim_blocks=True,
+            lstrip_blocks=True
+        )
+        env.filters["json"] = lambda x: json.loads(x if isinstance(x, str) else x.decode())
     return env
         
 def finalize(value):

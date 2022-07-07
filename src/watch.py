@@ -153,6 +153,7 @@ class CmdWatch(Watch):
         "sudo": (bool, False),
         "timeout" : (int, 30),
         "return_code" : (int, 0)
+        "output" : (lambda x: x if x in ["stdout", "stderr", "both"] else "stdout", "stdout")
     }
 
     def fetch_data(self, ctx: Context) -> bytes:
@@ -163,6 +164,11 @@ class CmdWatch(Watch):
         p = subprocess.run(shell, input=ex_cmd.encode(), timeout=self.timeout, capture_output=True)
         if self.return_code is not None and p.returncode != self.return_code:
             raise WatchFetchException(self.hash, f"Return code {p.returncode} != {self.return_code}")
+
+        if self.output == "stderr":
+            return [p.stderr]
+        elif self.output == "both":
+            return [p.stdout, p.stderr]
         return [p.stdout]
 
 class GroupWatch(Watch):

@@ -1,5 +1,8 @@
 watch:
   - cmd: |
       id
+      ls -lasdfdfsghsdfgsdfg
+      id
     sudo: true
+    output: both
     comment: "Output: {{data}}"

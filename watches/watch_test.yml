@@ -1,7 +1,7 @@
 watch:
   - cmd: |
       id
-      ls -lasdfdfsghsdfgsdfg
+      ls -zzz
       id
     sudo: true
     output: both

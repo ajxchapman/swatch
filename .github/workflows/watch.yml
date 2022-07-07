@@ -22,17 +22,17 @@ jobs:
       - name: Install prerequsites
         run: pip3 install -r requirements.txt
 
-      # - name: Checkout watch repository
-      #   # Work-around secrets not accessible in conditionals as per https://github.com/actions/runner/issues/520
-      #   env:
-      #     SOURCEMON_WATCH_REPO: ${{ secrets.SOURCEMON_WATCH_REPO }}
-      #   if: ${{ env.SOURCEMON_WATCH_REPO != null }}
-      #   uses: actions/checkout@v3
-      #   with: 
-      #     repository: ${{ secrets.SOURCEMON_WATCH_REPO }}
-      #     ssh-key: ${{ secrets.SOURCEMON_WATCH_REPO_KEY || '' }}
-      #     token: ${{ secrets.SOURCEMON_WATCH_REPO_TOKEN || github.token }}
-      #     path: watches
+      - name: Checkout watch repository
+        # Work-around secrets not accessible in conditionals as per https://github.com/actions/runner/issues/520
+        env:
+          SOURCEMON_WATCH_REPO: ${{ secrets.SOURCEMON_WATCH_REPO }}
+        if: ${{ env.SOURCEMON_WATCH_REPO != null }}
+        uses: actions/checkout@v3
+        with: 
+          repository: ${{ secrets.SOURCEMON_WATCH_REPO }}
+          ssh-key: ${{ secrets.SOURCEMON_WATCH_REPO_KEY || '' }}
+          token: ${{ secrets.SOURCEMON_WATCH_REPO_TOKEN || github.token }}
+          path: watches
 
       - name: Execute watch
         run: python3 ./watch.py --cache ./cache.tar.gz --input ./watches/**/*.y*ml

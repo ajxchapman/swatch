@@ -16,10 +16,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh api -q '.artifacts[0].archive_download_url' /repos/${{ github.repository }}/actions/artifacts
-          curl -sLo artifact.zip -H "Authorization: token ${GH_TOKEN}" $(gh api -q '.artifacts[0].archive_download_url' /repos/${{ github.repository }}/actions/artifacts)
-          unzip artifact.zip && rm artifact.zip
-        continue-on-error: true
+          ARTIFACT_URL=$(gh api -q '.artifacts[0].archive_download_url' /repos/${{ github.repository }}/actions/artifacts)
+          [ ! -z "${ARTIFACT_URL}" ] && curl -sLo artifact.zip -H "Authorization: token ${GH_TOKEN}" ${ARTIFACT_URL} && unzip artifact.zip && rm artifact.zip
 
       - name: Install prerequsites
         run: pip3 install -r requirements.txt

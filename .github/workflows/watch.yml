@@ -13,6 +13,8 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Download artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh api -q '.artifacts[0].archive_download_url' /repos/${{ github.repository }}/actions/artifacts
           curl -sLo artifact.zip -H "Authorization: token ${GH_TOKEN}" $(gh api -q '.artifacts[0].archive_download_url' /repos/${{ github.repository }}/actions/artifacts)

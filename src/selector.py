@@ -68,8 +68,11 @@ class BytesSelector(Selector):
         return [data[self.start:self.end]]
 
 class LinesSelector(Selector):
+    keys = {
+        "keepends" : (bool, False)
+    }
     def run(self, data):
-        return data.splitlines(keepends=True)
+        return data.splitlines(keepends=self.keepends)
 
 class SplitSelector(Selector):
     keys = {

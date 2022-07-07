@@ -216,7 +216,7 @@ class ConditionalWatch(Watch):
         "selectors": (None, []), # Selectors do not make sense for 'conditional'
         "match": (None, None), # Match does not make sense for 'conditional'
         "operator" : (str, "and"), 
-        "then" : {}
+        "then" : (dict, {})
     }
 
     def __init__(self, **kwargs):

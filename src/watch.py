@@ -215,7 +215,7 @@ class GroupWatch(Watch):
         subcomments = [x.get_comment(ctx) for x in self.matched]
         if self.comment is None:
             return subcomments
-        return [self.comment, *subcomments]
+        return [template_render(self.comment, ctx.variables), *subcomments]
 
     def match_data(self, ctx: Context, data: typing.List[bytes]) -> bool:
         match = False
@@ -261,7 +261,7 @@ class ConditionalWatch(Watch):
     def get_comment(self, ctx: Context):
         if self.comment is None:
             return self.then.get_comment(ctx)
-        return [self.comment, self.then.get_comment(ctx)]
+        return [template_render(self.comment, ctx.variables), self.then.get_comment(ctx)]
 
     def match_data(self, ctx: Context, data: typing.List[bytes]) -> bool:
         self.matched = self.conditional.match_data(ctx, self.conditional.process_data(ctx))

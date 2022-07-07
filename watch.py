@@ -35,20 +35,22 @@ def process(config, cache, verbose=False):
         # Create a new context and temporary working directory for each watch
         ctx = Context()
         ctx.set_variable("cache", cache)
-        with tempfile.TemporaryDirectory() as tmpdir:
-            os.chdir(tmpdir)
-            ctx.set_variable("tmpdir", tmpdir)
-            try:
-                if watch.match_data(ctx, watch.process_data(ctx)):
-                    alert(render_comment(watch.get_comment(ctx)), config["config"].get("hook"))
-            except WatchException as e:
-                key = e.key
-                if not verbose:
-                    key = hashlib.sha256(key.encode()).hexdigest()
-                sys.stderr.write(f"Error processing {key}:\n\t{e.__class__.__name__}: {e}\n")
-                traceback.print_tb(e.__traceback__)
-            finally:
-                os.chdir(cwd)
+
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                os.chdir(tmpdir)
+                ctx.set_variable("tmpdir", tmpdir)
+                try:
+                    if watch.match_data(ctx, watch.process_data(ctx)):
+                        alert(render_comment(watch.get_comment(ctx)), config["config"].get("hook"))
+                except WatchException as e:
+                    key = e.key
+                    print(f"Error processing {key}:\n\t{e.__class__.__name__}: {e}")
+                    traceback.print_tb(e.__traceback__, file=sys.stdout)
+                finally:
+                    os.chdir(cwd)
+        except PermissionError:
+            print(f"Error removing temporary directory\n")
 
 def replace_var(vars, var):
     if var in vars:

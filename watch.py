@@ -45,8 +45,6 @@ def process(config, cache, verbose=False):
                         alert(render_comment(watch.get_comment(ctx)), config["config"].get("hook"))
                 except WatchException as e:
                     key = e.key
-                    if not verbose:
-                        key = hashlib.sha256(key.encode()).hexdigest()
                     sys.stderr.write(f"Error processing {key}:\n\t{e.__class__.__name__}: {e}\n")
                     traceback.print_tb(e.__traceback__)
                 finally:

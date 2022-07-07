@@ -178,7 +178,7 @@ class CmdWatch(Watch):
                 subprocess.run(["sudo", "/bin/kill", "--", f"-{os.getpgid(p.pid)}"])
             else:
                 os.killpg(os.getpgid(p.pid), signal.SIGTERM)
-            raise WatchFetchException(self.key, "Command Timeout")
+            raise WatchFetchException(self.hash, "Command Timeout")
 
         if self.return_code is not None and p.returncode != self.return_code:
             raise WatchFetchException(self.hash, f"Return code {p.returncode} != {self.return_code}")

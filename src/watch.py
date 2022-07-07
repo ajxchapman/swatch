@@ -4,6 +4,9 @@ import requests
 import subprocess
 import typing
 
+import traceback
+import sys
+
 from src.context import Context
 from src.diff import Diff
 from src.loadable import Loadable
@@ -174,11 +177,20 @@ class CmdWatch(Watch):
         shell = [self.shell]
         if self.sudo:
             shell = ["sudo"] + shell
-        p = subprocess.run(shell, input=ex_cmd.encode(), timeout=self.timeout, capture_output=True)
+
+        print("Command running")
+        try:
+            p = subprocess.run(shell, input=ex_cmd.encode(), timeout=self.timeout, capture_output=True)
+        except Exception as e:
+            print("Command error")
+            print(e)
+            traceback.print_tb(e.__traceback__, file=sys.stdout)
+
+        print("Command finished")
         if self.return_code is not None and p.returncode != self.return_code:
             raise WatchFetchException(self.hash, f"Return code {p.returncode} != {self.return_code}")
 
-        print("Cmd output:")
+        print("Command output:")
         print(p.stdout)
         print(p.stderr)
 

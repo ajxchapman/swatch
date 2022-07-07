@@ -45,12 +45,12 @@ def process(config, cache, verbose=False):
                         alert(render_comment(watch.get_comment(ctx)), config["config"].get("hook"))
                 except WatchException as e:
                     key = e.key
-                    sys.stderr.write(f"Error processing {key}:\n\t{e.__class__.__name__}: {e}\n")
-                    traceback.print_tb(e.__traceback__)
+                    print(f"Error processing {key}:\n\t{e.__class__.__name__}: {e}")
+                    traceback.print_tb(e.__traceback__, file=sys.stdout)
                 finally:
                     os.chdir(cwd)
         except PermissionError:
-            sys.stderr.write(f"Error removing temporary directory\n")
+            print(f"Error removing temporary directory\n")
 
 def replace_var(vars, var):
     if var in vars:

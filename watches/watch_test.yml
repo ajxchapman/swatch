@@ -1,8 +1,13 @@
 watch:
   - cmd: |
-      id
-      ls -zzz
-      id
+      apt update && apt install -y qemu-utils parted
+      modprobe nbd
+      curl -Lo ghes.qcow2 https://github-enterprise.s3.amazonaws.com/kvm/releases/github-enterprise-{{GHES_VERSION}}.qcow2
+      qemu-nbd --connect=/dev/nbd0 `pwd`/ghes.qcow2
+      partprobe /dev/nbd0
+      mkdir ghes_volume
+      mount /dev/nbd0p1 ./ghes_volume
+      ls -la ./ghes_volume/data
     sudo: true
     output: both
     comment: "Output: {{data}}"

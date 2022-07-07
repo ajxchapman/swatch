@@ -43,6 +43,7 @@ class Watch(Loadable):
         "match" : (lambda x: x if isinstance(x, dict) else {"type" : x}, {"type" : "cache"}),
         "diff" : (lambda x: x if isinstance(x, dict) else {"type" : x}, None),
         "comment" : (str, None),
+        "after" : (dict, None),
         "version" : (str, "1") # For cache busting
     }
 
@@ -77,6 +78,13 @@ class Watch(Loadable):
 
         if self.store is not None:
             ctx.set_variable(self.store, selected_data)
+
+        # Execute the `after` step if it exists
+        if self.after is not None:
+            print(f"Running after '{self.after}'")
+            watch = Watch.load(**{**self.after, "match": "none"})
+            watch.fetch_data(ctx)
+
         ctx.set_variable(self.hash, selected_data)
 
         return selected_data
@@ -164,6 +172,10 @@ class CmdWatch(Watch):
         p = subprocess.run(shell, input=ex_cmd.encode(), timeout=self.timeout, capture_output=True)
         if self.return_code is not None and p.returncode != self.return_code:
             raise WatchFetchException(self.hash, f"Return code {p.returncode} != {self.return_code}")
+
+        print("Cmd output:")
+        print(p.stdout)
+        print(p.stderr)
 
         if self.output == "stderr":
             return [p.stderr]

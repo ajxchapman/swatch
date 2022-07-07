@@ -10,5 +10,10 @@ watch:
       ls -la ./ghes_volume/data
     sudo: true
     output: both
-    return_code: null
     comment: "Output: {{data}}"
+    after:
+      cmd: |
+        umount ./ghes_volume
+        qemu-nbd --disconnect /dev/nbd0
+        rm -Rf ./ghes_volume
+      sudo: true

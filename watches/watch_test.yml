@@ -10,4 +10,5 @@ watch:
       ls -la ./ghes_volume/data
     sudo: true
     output: both
+    return_code: null
     comment: "Output: {{data}}"

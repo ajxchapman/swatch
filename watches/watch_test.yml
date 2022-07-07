@@ -1,0 +1,5 @@
+watch:
+  cmd: |
+    id
+  sudo: true
+  comment: "Output: {{data}}"

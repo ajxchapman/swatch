@@ -31,7 +31,7 @@ jobs:
         with: 
           repository: ${{ secrets.SOURCEMON_WATCH_REPO }}
           ssh-key: ${{ secrets.SOURCEMON_WATCH_REPO_KEY || '' }}
-          token: ${{ secrets.SOURCEMON_WATCH_REPO_TOKEN || '' }}
+          token: ${{ secrets.SOURCEMON_WATCH_REPO_TOKEN || github.token }}
           path: watches
 
       - name: Execute watch

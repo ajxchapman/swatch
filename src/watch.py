@@ -75,7 +75,7 @@ class Watch(Loadable):
             raise WatchSelectorException(ctx.get_variable("key"), f"Exception selecting data: {e}") from e
 
         if self.store is not None:
-            ctx.set_variable(self.store, "".join([x.decode() for x in selected_data]))
+            ctx.set_variable(self.store, selected_data)
         ctx.set_variable(self.hash, selected_data)
 
         return selected_data

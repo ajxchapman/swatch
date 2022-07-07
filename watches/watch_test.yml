@@ -1,8 +1,8 @@
 watch:
   - cmd: |
-      apt update && apt install -y qemu-utils parted
+      apt update && apt install -y qemu-utils parted > /dev/null
       modprobe nbd
-      curl -Lo ghes.qcow2 https://github-enterprise.s3.amazonaws.com/kvm/releases/github-enterprise-3.5.2.qcow2
+      curl -sLo ghes.qcow2 https://github-enterprise.s3.amazonaws.com/kvm/releases/github-enterprise-3.5.2.qcow2
       qemu-nbd --connect=/dev/nbd0 `pwd`/ghes.qcow2
       partprobe /dev/nbd0
       mkdir ghes_volume
@@ -10,7 +10,6 @@ watch:
       ls -la ./ghes_volume/
     sudo: true
     timeout: 600
-    output: both
     comment: "Output: {{data}}"
     after:
       cmd: |

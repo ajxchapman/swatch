@@ -31,7 +31,7 @@ def render_comment(comments: typing.List[str], indent: int=0) -> str:
         if isinstance(x, str):
             if i == 0:
                 _indent += 1
-            output.append(indent * "\t" + x)
+            output.append(indent * "  " + ("\n" + indent * "  ").join(x.splitlines()))
         else:
             _output = render_comment(x, indent=_indent)
             if len(_output) > 0:

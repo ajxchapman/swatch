@@ -35,7 +35,7 @@ jobs:
           path: watches
 
       - name: Execute watch
-        run: python3 ./watch.py --cache ./cache.tar.gz --input ./watches/**/*.y*ml
+        run: python3 ./watch.py --cache ./cache.tar.gz ./watches/**/*.y*ml
 
       - uses: actions/upload-artifact@v3
         with:

@@ -62,16 +62,16 @@ def replace_var(vars, var):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--cache", "-c", type=str, default="cache.yaml")
-    parser.add_argument("--input", "-i", action="append")
     parser.add_argument("--verbose", "-v", action="store_true")
     parser.add_argument("--test", "-t", action="store_true")
+    parser.add_argument('watches', nargs=argparse.REMAINDER)
     args = parser.parse_args()
 
     config = {
         "watch": [],
         "config": {}
     }
-    for watch_file in set([x for xs in [glob.glob(y, recursive=True) for y in args.input] for x in xs]):
+    for watch_file in set([x for xs in [glob.glob(y, recursive=True) for y in args.watches] for x in xs]):
         with open(watch_file) as f:
             watch_data = f.read()
     

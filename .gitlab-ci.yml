@@ -21,7 +21,7 @@ watch:
     - |
       [ -z "${SOURCEMON_WATCH_REPO}" ] || git clone "${SOURCEMON_WATCH_REPO}" watches
     - curl -Lo cache.tar.gz "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/jobs/artifacts/${CI_COMMIT_REF_NAME}/raw/cache.tar.gz?job=${CI_BUILD_STAGE}&job_token=${CI_JOB_TOKEN}" || true
-    - python3 ./watch.py --cache ./cache.tar.gz ./watches/**/*.y*ml
+    - python3 ./watch.py --cache ./cache.tar.gz './watches/**/*.y*ml'
   artifacts:
     paths:
       - cache.tar.gz

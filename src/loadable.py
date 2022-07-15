@@ -88,7 +88,6 @@ class Loadable:
                 lkwargs[k] = kdefault
         
         lobj = lcls(**lkwargs)
-        print(lkwargs)
         lobj.hash = hash_args(lkwargs, skip_keys=getattr(lcls, "hash_skip", [])).hexdigest()
         return lobj
 

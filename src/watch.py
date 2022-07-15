@@ -48,6 +48,7 @@ class Watch(Loadable):
         "after" : (dict, None),
         "version" : (str, "1") # For cache busting
     }
+    hash_skip = ["comment"]
 
     def apply_selectors(self, ctx: Context, data: typing.List[bytes]) -> typing.List[bytes]:
         for selector_kwargs in self.selectors:

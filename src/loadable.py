@@ -1,10 +1,28 @@
 from __future__ import annotations
 import hashlib
+import typing
 import types
 
 
 class LoadableException(Exception):
     pass
+
+def hash_args(arg: object, hash: object=None, skip_keys: typing.List[bytes]=[]) -> object:
+    if hash is None:
+        hash = hashlib.sha256()
+    if isinstance(arg, list):
+        hash.update(b'[')
+        [(hash_args(x, hash, skip_keys), hash.update(b',')) for x in arg]
+        hash.update(b']')
+    elif isinstance(arg, dict):
+        hash.update(b'{')
+        [(hash_args(k, hash, skip_keys), hash.update(b':'), hash_args(v, hash, skip_keys), hash.update(b',')) for k, v in arg.items() if not k in skip_keys]
+        hash.update(b'}')
+    else:
+        hash.update(b's')
+        hash.update(str(arg).encode())
+    return hash
+
 
 class Loadable:
     __loadables = set()
@@ -68,13 +86,13 @@ class Loadable:
                     lkwargs[k] = kwargs[k] if isinstance(kwargs[k], ktype) else ktype(kwargs[k])
             else:
                 lkwargs[k] = kdefault
-        return lcls(**lkwargs)
+        
+        lobj = lcls(**lkwargs)
+        print(lkwargs)
+        lobj.hash = hash_args(lkwargs, skip_keys=getattr(lcls, "hash_skip", [])).hexdigest()
+        return lobj
 
     def __init__(self, **kwargs):
-        hash = hashlib.sha256()
         # Generic init method to set the kwargs to instance variables
         for k, v in kwargs.items():
-            hash.update(k.encode())
-            hash.update(repr(v).encode())
             setattr(self, k, v)
-        self.hash = hash.hexdigest()

@@ -13,7 +13,7 @@ class TestGroupWatch(unittest.TestCase):
         }], operator="all")
         
         ctx = Context()
-        result = w.match_data(ctx, w.process_data(ctx))
+        result = w.process(ctx)
         self.assertEqual(result, True)
         self.assertEqual(w.group[0].count, 1)
         self.assertEqual(w.group[1].count, 1)
@@ -28,7 +28,7 @@ class TestGroupWatch(unittest.TestCase):
         }], operator="all")
         
         ctx = Context()
-        result = w.match_data(ctx, w.process_data(ctx))
+        result = w.process(ctx)
         self.assertEqual(result, False)
         self.assertEqual(w.group[0].count, 1)
         self.assertEqual(w.group[1].count, 0) # Ensure early exit
@@ -43,7 +43,7 @@ class TestGroupWatch(unittest.TestCase):
         }], operator="any")
         
         ctx = Context()
-        result = w.match_data(ctx, w.process_data(ctx))
+        result = w.process(ctx)
         self.assertEqual(result, True)
         self.assertEqual(w.group[0].count, 1)
         self.assertEqual(w.group[1].count, 1)
@@ -58,7 +58,7 @@ class TestGroupWatch(unittest.TestCase):
         }], operator="any")
         
         ctx = Context()
-        result = w.match_data(ctx, w.process_data(ctx))
+        result = w.process(ctx)
         self.assertEqual(result, False)
         self.assertEqual(w.group[0].count, 1)
         self.assertEqual(w.group[1].count, 1)
@@ -73,7 +73,7 @@ class TestGroupWatch(unittest.TestCase):
         }], operator="last")
         
         ctx = Context()
-        result = w.match_data(ctx, w.process_data(ctx))
+        result = w.process(ctx)
         self.assertEqual(result, True)
         self.assertEqual(w.group[0].count, 1)
         self.assertEqual(w.group[1].count, 1)
@@ -89,7 +89,7 @@ class TestGroupWatch(unittest.TestCase):
         }], operator="last")
         
         ctx = Context()
-        result = w.match_data(ctx, w.process_data(ctx))
+        result = w.process(ctx)
         self.assertEqual(result, False)
         self.assertEqual(w.group[0].count, 1)
         self.assertEqual(w.group[1].count, 1)

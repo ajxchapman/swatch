@@ -13,7 +13,7 @@ class TestCommentWatch(unittest.TestCase):
         })
 
         ctx = Context()
-        w.match_data(ctx, w.process_data(ctx))
+        w.process(ctx)
         self.assertListEqual(w.get_comment(ctx), ["Comment"])
         self.assertEqual(render_comment(w.get_comment(ctx)), "Comment")
 
@@ -29,7 +29,7 @@ class TestCommentWatch(unittest.TestCase):
         }], comment="Comment1")
 
         ctx = Context()
-        w.match_data(ctx, w.process_data(ctx))
+        w.process(ctx)
 
         self.assertListEqual(w.get_comment(ctx), ["Comment1", ["Comment1.1"], ["Comment1.2"]])
         self.assertEqual(render_comment(w.get_comment(ctx)), "Comment1\n  Comment1.1\n  Comment1.2")
@@ -49,7 +49,7 @@ class TestCommentWatch(unittest.TestCase):
         }], comment="Comment1")
 
         ctx = Context()
-        w.match_data(ctx, w.process_data(ctx))
+        w.process(ctx)
 
         self.assertListEqual(w.get_comment(ctx), ["Comment1", ["Comment1.1"], [], ["Comment1.2"]])
         self.assertEqual(render_comment(w.get_comment(ctx)), "Comment1\n  Comment1.1\n  Comment1.2")
@@ -66,7 +66,7 @@ class TestCommentWatch(unittest.TestCase):
         }])
 
         ctx = Context()
-        w.match_data(ctx, w.process_data(ctx))
+        w.process(ctx)
 
         self.assertListEqual(w.get_comment(ctx), [["Comment Success"]])
         self.assertEqual(render_comment(w.get_comment(ctx)), "Comment Success")
@@ -83,7 +83,7 @@ class TestCommentWatch(unittest.TestCase):
         }])
 
         ctx = Context()
-        w.match_data(ctx, w.process_data(ctx))
+        w.process(ctx)
 
         self.assertListEqual(w.get_comment(ctx), [["Comment1"], ["Comment2"]])
         self.assertEqual(render_comment(w.get_comment(ctx)), "Comment1\nComment2")
@@ -103,7 +103,7 @@ class TestCommentWatch(unittest.TestCase):
         }])
 
         ctx = Context()
-        w.match_data(ctx, w.process_data(ctx))
+        w.process(ctx)
 
         self.assertListEqual(w.get_comment(ctx), [["Comment1"], [], ["Comment2"]])
         self.assertEqual(render_comment(w.get_comment(ctx)), "Comment1\nComment2")
@@ -127,7 +127,7 @@ class TestCommentWatch(unittest.TestCase):
         }], comment="Comment1")
 
         ctx = Context()
-        w.match_data(ctx, w.process_data(ctx))
+        w.process(ctx)
         self.assertEqual(render_comment(w.get_comment(ctx)), "Comment1\n  Comment1.1\n    Comment1.1.1\n  Comment1.2")
 
     def test_conditional_comment(self):
@@ -141,7 +141,7 @@ class TestCommentWatch(unittest.TestCase):
         }, comment="Comment1")
 
         ctx = Context()
-        w.match_data(ctx, w.process_data(ctx))
+        w.process(ctx)
 
         self.assertListEqual(w.get_comment(ctx), ["Comment1", ["Comment1.1"]])
         self.assertEqual(render_comment(w.get_comment(ctx)), "Comment1\n  Comment1.1")
@@ -157,7 +157,7 @@ class TestCommentWatch(unittest.TestCase):
         })
 
         ctx = Context()
-        w.match_data(ctx, w.process_data(ctx))
+        w.process(ctx)
 
         self.assertListEqual(w.get_comment(ctx), ["Comment"])
         self.assertEqual(render_comment(w.get_comment(ctx)), "Comment")

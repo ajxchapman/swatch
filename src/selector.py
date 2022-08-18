@@ -121,7 +121,7 @@ class ReplaceSelector(Selector):
     def run(self, data:bytes) -> typing.List[bytes]:
         return [re.sub(self.regex.encode(), self.replacement.encode(), data)]
 
-class IndexSelector(Selector):
+class SliceSelector(Selector):
     keys = {
         "start" : (int, 0),
         "end" : (int, None)

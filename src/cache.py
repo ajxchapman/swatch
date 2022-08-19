@@ -73,6 +73,7 @@ class Cache:
                 if self.encryptor is not None:
                     data = self.encryptor.decrypt(data)
                 return json.loads(data, object_hook=json_decode)
+        return []
 
     def put_file(self, key: str, data: typing.List[bytes]) -> None:
         if not re.match(KEY_EXPR, key):

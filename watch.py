@@ -94,7 +94,7 @@ if __name__ == "__main__":
     if args.test:
         process(config, Cache(cache_path=None), watch_files, verbose=args.verbose)
     else:
-        cache = Cache(cache_path=args.cache, encryption_key=config["config"].get("key"))
+        cache = Cache(cache_path=args.cache, encryption_key=config.get("key"))
         try:
             process(config, cache, watch_files, verbose=args.verbose)
         finally:

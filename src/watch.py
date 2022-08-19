@@ -15,14 +15,9 @@ from src.selector import Selector, SelectorException
 from src.template import template_render
 
 class WatchException(Exception):
-    def __init__(self, key, *args, **kwargs):
-        self.key = key
-        super().__init__(*args, **kwargs)
-
-class WatchFetchException(WatchException):
     pass
 
-class WatchSelectorException(WatchException):
+class WatchFetchException(WatchException):
     pass
 
 def render_comment(comments: typing.List[str], indent: int=0) -> str:
@@ -70,7 +65,7 @@ class Watch(Loadable):
         """
         Return the raw data from the Watch
         """
-        raise WatchFetchException(ctx.get_variable("hash"), "Not implemented")
+        raise WatchFetchException("Not implemented")
 
     def select_data(self, ctx: Context, data: typing.List[bytes]) -> typing.List[bytes]:
         """
@@ -91,6 +86,7 @@ class Watch(Loadable):
 
     def process(self, ctx: Context) -> bool:
         ctx.set_variable("hash", self.hash)
+        cache = ctx.get_variable("cache")
         try:
             # Execute the `before` step if it exists
             if self.before is not None:
@@ -99,11 +95,12 @@ class Watch(Loadable):
                 
             data = self.fetch_data(ctx)
             data = self.select_data(ctx, data)
-        except (WatchFetchException, WatchSelectorException) as e:
-            raise e
-        except Exception as e:
-            raise e
-            raise WatchSelectorException(self.hash, f"Exception processing watch: {e}") from e
+
+            # Clear any previous failure count
+            cache.put_entry(f"{self.hash}-failures", 0)
+        except:
+            cache.put_entry(f"{self.hash}-failures", (cache.get_entry(f"{self.hash}-failures") or 0) + 1)
+            raise
         finally:
              # Execute the `after` step if it exists
             if self.after is not None:
@@ -123,7 +120,7 @@ class UrlWatch(Watch):
         "headers" : (dict, dict),
         "cookies" : (dict, dict),
         "data" : (str, None), 
-        "code" : (int, None),
+        "code" : (int, 200),
         "download" : (str, None)
     }
 
@@ -159,7 +156,7 @@ class UrlWatch(Watch):
             stream=True if self.download is not None else False)
         
         if self.code is not None and r.status_code != self.code:
-            raise WatchFetchException(self.hash, f"Status code {r.status_code} != {self.code}")
+            raise WatchFetchException(f"Status code {r.status_code} != {self.code}")
         
         if self.download is not None:
             location = os.path.abspath(os.path.join(os.getcwd(), self.download))
@@ -195,10 +192,10 @@ class CmdWatch(Watch):
                 subprocess.run(["sudo", "/bin/kill", "--", f"-{os.getpgid(p.pid)}"])
             else:
                 os.killpg(os.getpgid(p.pid), signal.SIGTERM)
-            raise WatchFetchException(self.hash, "Command Timeout")
+            raise WatchFetchException("Command Timeout")
 
         if self.return_code is not None and p.returncode != self.return_code:
-            raise WatchFetchException(self.hash, f"Return code {p.returncode} != {self.return_code}")
+            raise WatchFetchException(f"Return code {p.returncode} != {self.return_code}")
 
         if self.output == "stderr":
             return [stderr]

@@ -5,7 +5,7 @@ import os
 import tempfile
 import traceback
 import requests
-import sys
+import typing
 import yaml
 
 from src.cache import Cache
@@ -13,7 +13,7 @@ from src.context import Context
 from src.watch import Watch, WatchException, render_comment
 
 
-def alert(message, alert_hook=None):
+def alert(message:str, alert_hook: str=None) -> None:
     if alert_hook is not None:
         data = alert_hook.get("payload", json.dumps({"text" : message})).replace("MESSAGE", json.dumps(message))
         r = requests.request(
@@ -36,7 +36,7 @@ def find(watch_files, hash):
                 print(watch_file, json.dumps(watch))
                 return
 
-def process(config, cache, watch_files, verbose=False):
+def process(config: dict, cache: Cache, watch_files: typing.List[str], verbose: bool=False):
     cwd = os.getcwd()
     for watch_file in watch_files:
         with open(watch_file) as f:
@@ -65,9 +65,13 @@ def process(config, cache, watch_files, verbose=False):
                             alert(render_comment(watch.get_comment(ctx)), config.get("hook"))
                         else:
                             print(f"{watch.hash}:False")
-                    except WatchException as e:
-                        print(f"Error processing {e.hash}:\n\t{e.__class__.__name__}: {e}")
-                        traceback.print_tb(e.__traceback__, file=sys.stdout)
+                    except:
+                        failure_count = cache.get_entry(f"{watch.hash}-failures")
+                        print(f"{watch.hash}:Error:{failure_count}")
+                        if verbose:
+                            traceback.print_exc()
+                        if failure_count in [3, 10, 25, 50]:
+                            alert(f"{watch.hash}:{watch_file} has failed {failure_count} times in a row")
 
                         # Early exit out of a watch_file in the event on an exception
                         break

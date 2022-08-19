@@ -9,8 +9,8 @@ class TestCacheMatch(unittest.TestCase):
         m: Match = Match.load(type="cache")
 
         ctx = Context()
-        ctx.set_variable("cache", Cache(cache_path="test"))
-        ctx.set_variable("key", "test")
+        ctx.set_variable("cache", Cache())
+        ctx.set_variable("hash", "test")
         
         self.assertEqual(m.match(ctx, [b'data']), True)
         self.assertEqual(m.match(ctx, [b'data']), False)

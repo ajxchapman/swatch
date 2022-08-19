@@ -54,8 +54,8 @@ class CondMatch(Match):
             raise MatchException(f"Unknown operator '{self.operator}")
 
     def match(self, ctx: Context, data: typing.List[bytes]) -> bool:
-        c1 = template_render(self.comparitor, ctx.variables, data=data)
-        c2 = template_render(self.value, ctx.variables, data=data)
+        c1 = template_render(self.comparitor, ctx, data=data)
+        c2 = template_render(self.value, ctx, data=data)
 
         if self.operator != "eq":
             try:

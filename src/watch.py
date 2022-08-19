@@ -1,8 +1,8 @@
-import json
 import os
 import requests
 import signal
 import subprocess
+import time
 import typing
 from urllib.parse import urlparse
 
@@ -58,7 +58,7 @@ class Watch(Loadable):
                 data, cache_data = diff.diff(ctx.get_variable("cache").get_file(self.hash), data)
                 ctx.get_variable("cache").put_file(self.hash, cache_data)
             
-            return [template_render(self.comment, ctx.variables, data=data)]
+            return [template_render(self.comment, ctx, data=data)]
         return []
 
     def fetch_data(self, ctx: Context) -> typing.List[bytes]:
@@ -85,8 +85,12 @@ class Watch(Loadable):
         return Match.load(**self.match).match(ctx, data)
 
     def process(self, ctx: Context) -> bool:
-        ctx.set_variable("hash", self.hash)
+        ctx.push_variable("hash", self.hash)
         cache = ctx.get_variable("cache")
+
+        # Set the last run time
+        cache.put_entry(f"{self.hash}-executed", int(time.time()))
+
         try:
             # Execute the `before` step if it exists
             if self.before is not None:
@@ -112,7 +116,9 @@ class Watch(Loadable):
         # Store selected data in the context
         ctx.set_variable(self.hash, data)
 
-        return self.match_data(ctx, data)
+        result = self.match_data(ctx, data)
+        ctx.pop_variable("hash")
+        return result
 
 class UrlWatch(Watch):
     keys = {
@@ -219,7 +225,7 @@ class MultipleWatch(Watch):
     def get_comment(self, ctx: Context) -> typing.List[str]:
         if self.comment is None:
             return self.comments
-        return [template_render(self.comment, ctx.variables), *self.comments]
+        return [template_render(self.comment, ctx), *self.comments]
 
     def match_data(self, ctx: Context, data: typing.List[bytes]) -> bool:
         # Return False if no elements were fetched
@@ -317,7 +323,7 @@ class ConditionalWatch(Watch):
     def get_comment(self, ctx: Context) -> typing.List[str]:
         if self.comment is None:
             return self.then.get_comment(ctx)
-        return [template_render(self.comment, ctx.variables), self.then.get_comment(ctx)]
+        return [template_render(self.comment, ctx), self.then.get_comment(ctx)]
 
     def fetch_data(self, ctx: Context) -> typing.List[bytes]:
         if self.conditional.process(ctx):

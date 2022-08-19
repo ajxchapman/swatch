@@ -1,25 +1,41 @@
+import typing
+
 from src.template import template_render
 
 class Context:
     def __init__(self):
-        self.output = None
-        self.outputs = []
-        self.variables = {}
+        self.stack_variables = set()
+        self._variables = {}
 
-    def add_output(self, output):
-        self.output = output
-        self.outputs.append(output)
+    def keys(self):
+        return self._variables.keys()
 
-    def set_variable(self, key: str, value: object) -> None:
-        self.variables[key] = value
+    def __getitem__(self, key: typing.Any) -> typing.Any:
+        return self.get_variable(key)
 
-    def get_variable(self, key: str, default: object=None) -> object:
-        return self.variables.get(key, default)
+    def push_variable(self, key: str, value: typing.Any) -> None:
+        self.stack_variables.add(key)
+        self._variables.setdefault(key, []).append(value)
 
-    def expand_context(self, value):
+    def pop_variable(self, key: str) -> typing.Any:
+        v = self._variables[key].pop()
+        if len(self._variables[key]) == 0:
+            self.stack_variables.remove(key)
+            del self._variables[key]
+        return v
+
+    def set_variable(self, key: str, value: typing.Any) -> None:
+        self._variables[key] = value
+
+    def get_variable(self, key: str, default: typing.Any=None) -> typing.Any:
+        if key in self.stack_variables:
+            return self._variables.get(key, [default])[0]
+        return self._variables.get(key, default)
+
+    def expand_context(self, value: typing.Any) -> typing.Any:
         if isinstance(value, str):
             if "{" in value:
-                return template_render(value, self.variables)
+                return template_render(value, self)
         elif isinstance(value, list):
             return [self.expand_context(x) for x in value]
         elif isinstance(value, dict):

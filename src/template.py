@@ -1,9 +1,11 @@
+import base64
 import json
+import typing
 
 from jinja2 import Environment, BaseLoader
 
 env = None
-def init_env():
+def init_env() -> Environment:
     global env
     if env is None:
         env = Environment(
@@ -17,7 +19,7 @@ def init_env():
         env.filters["b64decode"] = lambda x: base64.b64decode(x)
     return env
         
-def finalize(value):
+def finalize(value: typing.Any) -> typing.Any:
     if value is None:
         return ""
     elif isinstance(value, bytes):
@@ -32,7 +34,7 @@ def finalize(value):
             return ""
     return value
 
-def template_render(template, *args, **kwargs):
+def template_render(template: str, *args, **kwargs) -> str:
     _template = init_env().from_string(template)
     
     _args = {}

@@ -23,6 +23,8 @@ def hash_args(arg: object, hash: object=None, skip_keys: typing.List[bytes]=[]) 
         hash.update(str(arg).encode())
     return hash
 
+def all_subclasses(cls):
+    return set(cls.__subclasses__()).union([s for c in cls.__subclasses__() for s in all_subclasses(c)])
 
 class Loadable:
     __loadables = set()
@@ -35,7 +37,7 @@ class Loadable:
         if not cls.__name__ in cls.__loadables:
             cls.__loadables.add(cls.__name__)
 
-            for c in cls.__subclasses__():
+            for c in all_subclasses(cls):
                 scls_name = (cls.__name__ + "_" + c.__name__.replace(cls.__name__, "")).lower()
                 cls.__classes[scls_name] = c
 
@@ -85,6 +87,9 @@ class Loadable:
                 else:
                     lkwargs[k] = kwargs[k] if isinstance(kwargs[k], ktype) else ktype(kwargs[k])
             else:
+                # If the default is a callable, call it
+                if isinstance(kdefault, (type, types.FunctionType)):
+                    kdefault = kdefault()
                 lkwargs[k] = kdefault
         
         lobj = lcls(**lkwargs)

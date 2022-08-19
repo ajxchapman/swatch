@@ -85,13 +85,13 @@ class Cache:
                 _data = self.encryptor.encrypt(_data)
             f.write(_data)
 
-    def get_entry(self, key: str) -> str:
+    def get_entry(self, key: str) -> typing.Any:
         if not re.match(KEY_EXPR, key):
             raise CacheException(f"Invalid cache key: '{key}'")
         
         return self.cache.get(key)
     
-    def put_entry(self, key: str, data: str) -> None:
+    def put_entry(self, key: str, data: typing.Any) -> None:
         if not re.match(KEY_EXPR, key):
             raise CacheException(f"Invalid cache key: '{key}'")
 

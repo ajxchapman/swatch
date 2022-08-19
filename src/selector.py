@@ -61,6 +61,7 @@ class CssSelector(Selector):
         return [str(x).encode() for x in soup.select(self.value)]
 
 class BytesSelector(Selector):
+    default_key = "end"
     keys = {
         "start" : (int, 0),
         "end" : (int, None)

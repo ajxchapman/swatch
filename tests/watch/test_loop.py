@@ -1,9 +1,19 @@
 import unittest
 
-from src.watch import Watch, Context
+from src.cache import Cache
+from src.context import Context
+from src.watch import Watch
 
 
 class TestLoopWatch(unittest.TestCase):
+    def setUp(self) -> None:
+        self.ctx = Context()
+        self.cache = Cache()
+        self.ctx.set_variable("cache", self.cache)
+    
+    def tearDown(self) -> None:
+        self.cache.close()
+    
     def test_basic(self):
         w = Watch.load(loop={
             "data": [b'1', b'2', b'3', b'4'],
@@ -13,8 +23,7 @@ class TestLoopWatch(unittest.TestCase):
             "match" : {"type" : "true"}
         })
         
-        ctx = Context()
-        result = w.process(ctx)
+        result = w.process(self.ctx)
         self.assertEqual(result, True)
         self.assertEqual(len(w.iterations), 4)
         self.assertEqual(w.iterations[0].count, 1)
@@ -32,8 +41,7 @@ class TestLoopWatch(unittest.TestCase):
             }
         )
         
-        ctx = Context()
-        result = w.process(ctx)
+        result = w.process(self.ctx)
         self.assertEqual(result, False)
         self.assertListEqual(w.matched, [True, False])
         self.assertEqual(len(w.iterations), 2)
@@ -49,8 +57,7 @@ class TestLoopWatch(unittest.TestCase):
             }
         )
         
-        ctx = Context()
-        result = w.process(ctx)
+        result = w.process(self.ctx)
         self.assertEqual(result, False)
 
         

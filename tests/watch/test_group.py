@@ -1,8 +1,18 @@
 import unittest
 
-from src.watch import Watch, Context
+from src.cache import Cache
+from src.context import Context
+from src.watch import Watch
 
 class TestGroupWatch(unittest.TestCase):
+    def setUp(self) -> None:
+        self.ctx = Context()
+        self.cache = Cache()
+        self.ctx.set_variable("cache", self.cache)
+    
+    def tearDown(self) -> None:
+        self.cache.close()
+
     def test_and_success(self):
         w = Watch.load(group=[{
             "type": "count",
@@ -12,8 +22,7 @@ class TestGroupWatch(unittest.TestCase):
             "match" : {"type" : "true"}
         }], operator="all")
         
-        ctx = Context()
-        result = w.process(ctx)
+        result = w.process(self.ctx)
         self.assertEqual(result, True)
         self.assertEqual(w.group[0].count, 1)
         self.assertEqual(w.group[1].count, 1)
@@ -27,8 +36,7 @@ class TestGroupWatch(unittest.TestCase):
             "match" : {"type" : "true"}
         }], operator="all")
         
-        ctx = Context()
-        result = w.process(ctx)
+        result = w.process(self.ctx)
         self.assertEqual(result, False)
         self.assertEqual(w.group[0].count, 1)
         self.assertEqual(w.group[1].count, 0) # Ensure early exit
@@ -42,8 +50,7 @@ class TestGroupWatch(unittest.TestCase):
             "match" : {"type" : "false"}
         }], operator="any")
         
-        ctx = Context()
-        result = w.process(ctx)
+        result = w.process(self.ctx)
         self.assertEqual(result, True)
         self.assertEqual(w.group[0].count, 1)
         self.assertEqual(w.group[1].count, 1)
@@ -57,8 +64,7 @@ class TestGroupWatch(unittest.TestCase):
             "match" : {"type" : "false"}
         }], operator="any")
         
-        ctx = Context()
-        result = w.process(ctx)
+        result = w.process(self.ctx)
         self.assertEqual(result, False)
         self.assertEqual(w.group[0].count, 1)
         self.assertEqual(w.group[1].count, 1)
@@ -72,8 +78,7 @@ class TestGroupWatch(unittest.TestCase):
             "match" : {"type" : "true"}
         }], operator="last")
         
-        ctx = Context()
-        result = w.process(ctx)
+        result = w.process(self.ctx)
         self.assertEqual(result, True)
         self.assertEqual(w.group[0].count, 1)
         self.assertEqual(w.group[1].count, 1)
@@ -88,8 +93,7 @@ class TestGroupWatch(unittest.TestCase):
             "match" : {"type" : "false"}
         }], operator="last")
         
-        ctx = Context()
-        result = w.process(ctx)
+        result = w.process(self.ctx)
         self.assertEqual(result, False)
         self.assertEqual(w.group[0].count, 1)
         self.assertEqual(w.group[1].count, 1)

@@ -1,9 +1,19 @@
 import unittest
 
-from src.watch import Watch, Context
+from src.cache import Cache
+from src.context import Context
+from src.watch import Watch
 
 
 class TestConditionalWatch(unittest.TestCase):
+    def setUp(self) -> None:
+        self.ctx = Context()
+        self.cache = Cache()
+        self.ctx.set_variable("cache", self.cache)
+    
+    def tearDown(self) -> None:
+        self.cache.close()
+
     def test_success_success(self):
         w = Watch.load(conditional={
             "type": "count",
@@ -13,8 +23,7 @@ class TestConditionalWatch(unittest.TestCase):
             "match" : {"type" : "true"}
         })
         
-        ctx = Context()
-        result = w.process(ctx)
+        result = w.process(self.ctx)
         self.assertEqual(result, True)
         self.assertEqual(w.conditional.group[0].count, 1)
         self.assertEqual(w.then.count, 1)
@@ -28,8 +37,7 @@ class TestConditionalWatch(unittest.TestCase):
             "match" : {"type" : "false"}
         })
         
-        ctx = Context()
-        result = w.process(ctx)
+        result = w.process(self.ctx)
         self.assertEqual(result, False)
         self.assertEqual(w.conditional.group[0].count, 1)
         self.assertEqual(w.then.count, 1)
@@ -43,8 +51,7 @@ class TestConditionalWatch(unittest.TestCase):
             "match" : {"type" : "true"}
         })
         
-        ctx = Context()
-        result = w.process(ctx)
+        result = w.process(self.ctx)
         self.assertEqual(result, False)
         self.assertEqual(w.conditional.group[0].count, 1)
         self.assertEqual(w.then.count, 0)
@@ -58,8 +65,7 @@ class TestConditionalWatch(unittest.TestCase):
             "match" : {"type" : "false"}
         })
         
-        ctx = Context()
-        result = w.process(ctx)
+        result = w.process(self.ctx)
         self.assertEqual(result, False)
         self.assertEqual(w.conditional.group[0].count, 1)
         self.assertEqual(w.then.count, 0)

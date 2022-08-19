@@ -54,23 +54,29 @@ class Watch(Loadable):
     def render(self) -> str:
         return self.hash
 
+    def get_comment(self, ctx: Context) -> typing.List[str]:
+        if self.comment is not None:
+            data = ctx.get_variable(self.hash)
+            if self.diff is not None:
+                diff = Diff.load(**self.diff)
+                data, cache_data = diff.diff(ctx.get_variable("cache").get_file(self.hash), data)
+                ctx.get_variable("cache").put_file(self.hash, cache_data)
+            
+            return [template_render(self.comment, ctx.variables, data=data)]
+        return []
+
     def fetch_data(self, ctx: Context) -> typing.List[bytes]:
         """
         Return the raw data from the Watch
         """
-        raise WatchFetchException(ctx.get_variable("key"), "Not implemented")
+        raise WatchFetchException(ctx.get_variable("hash"), "Not implemented")
 
     def select_data(self, ctx: Context, data: typing.List[bytes]) -> typing.List[bytes]:
         """
         Return the selected data from the Watch
         """
         for selector_kwargs in self.selectors:
-            try:
-                modifier: Selector = Selector.load(**selector_kwargs)
-            except SelectorException as e:
-                raise WatchException(self.hash, f"Error parsing modifier: {e}") from e
-
-            data = modifier.run_all(data)
+            data = Selector.load(**selector_kwargs).run_all(ctx, data)
         return data
 
     def match_data(self, ctx: Context, data: typing.List[bytes]) -> bool:
@@ -80,14 +86,10 @@ class Watch(Loadable):
         if self.match is None:
             return True
 
-        try:
-            match = Match.load(**self.match)
-        except MatchException as e:
-            raise WatchException(self.hash, f"Error parsing match: {e}") from e
-        return match.match(ctx, data)
+        return Match.load(**self.match).match(ctx, data)
 
     def process(self, ctx: Context) -> bool:
-        ctx.set_variable("key", self.hash)
+        ctx.set_variable("hash", self.hash)
         try:
             # Execute the `before` step if it exists
             if self.before is not None:
@@ -108,21 +110,10 @@ class Watch(Loadable):
 
         if self.store is not None:
             ctx.set_variable(self.store, data)
+        # Store selected data in the context
         ctx.set_variable(self.hash, data)
 
         return self.match_data(ctx, data)
-
-    def get_comment(self, ctx: Context) -> typing.List[str]:
-        if self.comment is not None:
-            data = ctx.get_variable(self.hash)
-            if self.diff is not None:
-                diff = Diff.load(**self.diff)
-                old_data = ctx.get_variable("cache").get_file(self.hash)
-                ctx.get_variable("cache").put_file(self.hash, data)
-                data = diff.diff(old_data, data)
-            
-            return [template_render(self.comment, ctx.variables, data=data)]
-        return []
 
 class UrlWatch(Watch):
     keys = {

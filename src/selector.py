@@ -107,6 +107,7 @@ class ReplaceSelector(Selector):
         return [re.sub(self.regex.encode(), self.replacement.encode(), data)]
 
 class SliceSelector(Selector):
+    default_key = "end"
     keys = {
         "start" : (int, 0),
         "end" : (int, None)

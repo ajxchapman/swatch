@@ -13,6 +13,8 @@ def init_env():
             lstrip_blocks=True
         )
         env.filters["json"] = lambda x: json.loads(x if isinstance(x, str) else x.decode())
+        env.filters["b64encode"] = lambda x: base64.b64encode(x.encode() if isinstance(x, str) else x)
+        env.filters["b64decode"] = lambda x: base64.b64decode(x)
     return env
         
 def finalize(value):

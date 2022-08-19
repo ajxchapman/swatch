@@ -5,6 +5,7 @@ import os
 import tempfile
 import traceback
 import requests
+import time
 import typing
 import yaml
 
@@ -60,14 +61,15 @@ def process(config: dict, cache: Cache, watch_files: typing.List[str], verbose: 
                 # Execute main 'watch' tasks
                 for watch in [Watch.load(**x) for x in watch_config.get("watch", [])]:
                     try:
+                        starttime = time.time()
                         if watch.process(ctx):
-                            print(f"{watch.hash}:True")
+                            print(f"{watch.hash}:{int(time.time() - starttime):04}:True")
                             alert(render_comment(watch.get_comment(ctx)), config.get("hook"))
                         else:
-                            print(f"{watch.hash}:False")
+                            print(f"{watch.hash}:{int(time.time() - starttime):04}:False")
                     except:
                         failure_count = cache.get_entry(f"{watch.hash}-failures")
-                        print(f"{watch.hash}:Error:{failure_count}")
+                        print(f"{watch.hash}:{int(time.time() - starttime):04}:Error:{failure_count}")
                         if verbose:
                             traceback.print_exc()
                         if failure_count in [3, 10, 25, 50]:

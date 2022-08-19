@@ -4,6 +4,7 @@ import requests
 import signal
 import subprocess
 import typing
+from urllib.parse import urlparse
 
 
 from src.context import Context
@@ -101,6 +102,7 @@ class Watch(Loadable):
         except (WatchFetchException, WatchSelectorException) as e:
             raise e
         except Exception as e:
+            raise e
             raise WatchSelectorException(self.hash, f"Exception processing watch: {e}") from e
         finally:
              # Execute the `after` step if it exists
@@ -117,11 +119,12 @@ class Watch(Loadable):
 
 class UrlWatch(Watch):
     keys = {
-        "method" : "GET",
-        "headers" : {},
-        "data" : None, 
-        "code" : None,
-        "download" : (str, None),
+        "method" : (str, "GET"),
+        "headers" : (dict, dict),
+        "cookies" : (dict, dict),
+        "data" : (str, None), 
+        "code" : (int, None),
+        "download" : (str, None)
     }
 
     def render(self) -> str:
@@ -134,12 +137,25 @@ class UrlWatch(Watch):
     def fetch_data(self, ctx: Context) -> typing.List[bytes]:
         ex_url = ctx.expand_context(self.url)
         ex_headers = ctx.expand_context(self.headers)
+        ex_data = ctx.expand_context(self.data)
+        ex_cookies = ctx.expand_context(self.cookies)
         
-        r = requests.request(
+        # Use a per-context session for URL watches
+        s = ctx.get_variable("requests_session")
+        if s is None:
+            s = requests.session()
+            ctx.set_variable("requests_session", s)
+        
+        if len(ex_cookies) > 0:
+            domain = urlparse(ex_url).hostname
+            for k, v in ex_cookies.items():
+                s.cookies.set(k, v, domain=domain)
+
+        r = s.request(
             self.method,
             ex_url,
             headers=ex_headers,
-            data=self.data,
+            data=ex_data,
             stream=True if self.download is not None else False)
         
         if self.code is not None and r.status_code != self.code:

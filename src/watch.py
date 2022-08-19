@@ -218,6 +218,10 @@ class MultipleWatch(Watch):
         return [template_render(self.comment, ctx.variables), *self.comments]
 
     def match_data(self, ctx: Context, data: typing.List[bytes]) -> bool:
+        # Return False if no elements were fetched
+        if len(self.matched) == 0:
+            return False
+        
         if self.operator in GroupWatch.OPERATOR_ALL:
             return all(self.matched)
         elif self.operator in GroupWatch.OPERATOR_ANY:

@@ -38,4 +38,19 @@ class TestLoopWatch(unittest.TestCase):
         self.assertListEqual(w.matched, [True, False])
         self.assertEqual(len(w.iterations), 2)
 
+    def test_zero_iterations(self):
+        w = Watch.load(loop={
+                "data": [],
+                "match" : {"type" : "true"}
+            }, 
+            do={
+                "type": "count",
+                "match" : {"type" : "true"}
+            }
+        )
+        
+        ctx = Context()
+        result = w.process(ctx)
+        self.assertEqual(result, False)
+
         

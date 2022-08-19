@@ -40,7 +40,7 @@ def process(config, cache, verbose=False):
                 os.chdir(tmpdir)
                 ctx.set_variable("tmpdir", tmpdir)
                 try:
-                    if watch.match_data(ctx, watch.process_data(ctx)):
+                    if watch.process(ctx):
                         print(f"{watch.hash}:True")
                         alert(render_comment(watch.get_comment(ctx)), config["config"].get("hook"))
                     else:

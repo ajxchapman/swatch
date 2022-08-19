@@ -8,7 +8,7 @@ import typing
 
 from src.context import Context
 from src.diff import Diff
-from src.loadable import Loadable
+from src.loadable import Loadable, hash_args
 from src.match import Match, MatchException
 from src.selector import Selector, SelectorException
 from src.template import template_render
@@ -54,7 +54,7 @@ class Watch(Loadable):
     def render(self) -> str:
         return self.hash
 
-    def fetch_data(self, ctx: Context, *args, **kwargs) -> typing.List[bytes]:
+    def fetch_data(self, ctx: Context) -> typing.List[bytes]:
         """
         Return the raw data from the Watch
         """
@@ -199,46 +199,25 @@ class CmdWatch(Watch):
             return [stdout, stderr]
         return [stdout]
 
-class GroupWatch(Watch):
+class MultipleWatch(Watch):
     OPERATOR_ALL = ("all", "and")
     OPERATOR_ANY = ("any", "or")
     OPERATOR_LAST = "last"
 
     keys = {
-        "selectors": (None, []), # Selectors do not make sense for 'group'
-        "match": (None, None), # Match does not make sense for 'group'
-        "operator" : "or"
+        "selectors": (None, list), # Selectors do not make sense here
+        "match": (None, None), # Match does not make sense here
+        "operator" : "any",
+        "matched" : (None, list),
+        "comments" : (None, list)
     }
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # Ensure to propogate 'version' up the tree
-        self.group = [Watch.load(**{**x, "version" : self.version}) for x in self.group]
-        self.matched = [False] * len(self.group)
-
-    def render(self) -> str:
-        return "Group[" + ", ".join([x.render() for x in self.group]) + "]"
-
     def get_comment(self, ctx: Context) -> typing.List[str]:
-        subcomments = [x.get_comment(ctx) for x in self.matched]
         if self.comment is None:
-            return subcomments
-        return [template_render(self.comment, ctx.variables), *subcomments]
-
-    def fetch_data(self, ctx: Context) -> typing.List[bytes]:
-        data = []
-        for i, x in enumerate(self.group):
-            match = x.process(ctx)
-            if match:
-                self.matched[i] = match
-                data.extend(ctx.get_variable(x.hash))
-            # Early exit of 'and' operator
-            if self.operator in GroupWatch.OPERATOR_ALL and not match:
-                break
-        return data
+            return self.comments
+        return [template_render(self.comment, ctx.variables), *self.comments]
 
     def match_data(self, ctx: Context, data: typing.List[bytes]) -> bool:
-        print(self.matched)
         if self.operator in GroupWatch.OPERATOR_ALL:
             return all(self.matched)
         elif self.operator in GroupWatch.OPERATOR_ANY:
@@ -247,12 +226,73 @@ class GroupWatch(Watch):
             return self.matched[-1]
         raise WatchFetchException(f"Unknown operator '{self.operator}'")
 
+class GroupWatch(MultipleWatch):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Ensure to propogate 'version' up the tree
+        self.group = [Watch.load(**{**x, "version" : self.version}) for x in self.group]
+
+    def render(self) -> str:
+        return "Group[" + ", ".join([x.render() for x in self.group]) + "]"
+
+    def fetch_data(self, ctx: Context) -> typing.List[bytes]:
+        data = []
+        for x in self.group:
+            match = x.process(ctx)
+            self.matched.append(match)
+            if match:
+                data.extend(ctx.get_variable(x.hash))
+                # Early evaluate comments to mitigate context changes
+                self.comments.append(x.get_comment(ctx))
+            # Early exit of 'all' operator
+            if self.operator in GroupWatch.OPERATOR_ALL and not match:
+                break
+        return data
+
+class LoopWatch(MultipleWatch):
+    keys = {
+        "do" : (dict, {}),
+        "as" : (str, "data")
+    }
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.loop = Watch.load(**{**self.loop, "version": self.version})
+        self.iterations = []
+
+    def render(self) -> str:
+        return "Loop(" + self.loop.render() + ") {" + self.do.render() + "}"
+    
+    def fetch_data(self, ctx: Context) -> typing.List[bytes]:
+        data = []
+        if self.loop.process(ctx):
+            for datum in ctx.get_variable(self.loop.hash):
+                # Dynamically create a new Watch object for each loop iteration
+                w = Watch.load(**{**self.do, "version": self.version})
+                self.iterations.append(w)
+
+                # Need to update the dynamically created object hash for each loop iteration
+                w.hashobj = hash_args(datum, w.hashobj)
+                w.hash = w.hashobj.hexdigest()
+
+                ctx.set_variable(getattr(self, "as"), datum)
+                match = w.process(ctx)
+                self.matched.append(match)
+                if match:
+                    data.extend(ctx.get_variable(w.hash))
+                     # Early evaluate comments to mitigate context changes
+                    self.comments.append(w.get_comment(ctx))
+                # Early exit of 'all' operator
+                if self.operator in GroupWatch.OPERATOR_ALL and not match:
+                    break
+        return data
+
 class ConditionalWatch(Watch):
     keys = {
-        "selectors": (None, []), # Selectors do not make sense for 'conditional'
+        "selectors": (None, list), # Selectors do not make sense for 'conditional'
         "match": (None, None), # Match does not make sense for 'conditional'
         "operator" : (str, "and"), 
-        "then" : (dict, {})
+        "then" : (dict, dict)
     }
 
     def __init__(self, **kwargs):
@@ -279,32 +319,3 @@ class ConditionalWatch(Watch):
     
     def match_data(self, ctx: Context, data: typing.List[bytes]) -> bool:
         return self.matched
-
-# class LoopWatch(Watch):
-#     keys = {
-#         "selectors": (None, []), # Selectors do not make sense for 'loop'
-#         "match": (None, None), # Match does not make sense for 'loop'
-#         "do" : (dict, {}),
-#         "as" : (str, "data")
-#     }
-
-#     def __init__(self, **kwargs):
-#         super().__init__(**kwargs)
-#         self.do = Watch.load(**{**self.do, "version": self.version})
-
-#     def render(self) -> str:
-#         return "Loop(" + self.loop.render() + ") {" + self.do.render() + "}"
-
-#     def process_data(self, ctx: Context, verbose: bool = False) -> typing.List[bytes]:
-#         return []
-
-    # def match_data(self, ctx: Context, data: typing.List[bytes]) -> bool:
-    #     self.matched = self.conditional.match_data(ctx, self.conditional.process_data(ctx))
-    #     if self.matched:
-    #         return self.then.match_data(ctx, self.then.process_data(ctx))
-    #     return self.matched
-
-    # def get_comment(self, ctx: Context):
-    #     if self.comment is None:
-    #         return self.then.get_comment(ctx)
-    #     return [template_render(self.comment, ctx.variables), self.then.get_comment(ctx)]

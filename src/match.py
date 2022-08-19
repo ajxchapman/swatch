@@ -19,9 +19,9 @@ class CacheMatch(Match):
     CacheMatch returns True when the key:data paid does *not* exist in the cache
     """
     def match(self, ctx: Context, data: typing.List[bytes]) -> bool:
-        cache: Cache = ctx.variables["cache"]
+        cache: Cache = ctx.get_variable("cache")
 
-        key_digest = ctx.variables["key"]
+        key_digest = ctx.get_variable("hash")
         data_digest = hashlib.sha256()
         for datum in data:
             data_digest.update(datum)

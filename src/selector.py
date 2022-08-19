@@ -73,7 +73,7 @@ class LinesSelector(Selector):
     keys = {
         "keepends" : (bool, False)
     }
-    def run(self, data):
+    def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
         return data.splitlines(keepends=self.keepends)
 
 class SplitSelector(Selector):

@@ -93,7 +93,8 @@ class Loadable:
                 lkwargs[k] = kdefault
         
         lobj = lcls(**lkwargs)
-        lobj.hash = hash_args(lkwargs, skip_keys=getattr(lcls, "hash_skip", [])).hexdigest()
+        lobj.hashobj = hash_args(lkwargs, skip_keys=getattr(lcls, "hash_skip", []))
+        lobj.hash = lobj.hashobj.hexdigest()
         return lobj
 
     def __init__(self, **kwargs):

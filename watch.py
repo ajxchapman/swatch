@@ -2,7 +2,6 @@ import argparse
 import glob
 import json
 import os
-import re
 import tempfile
 import traceback
 import requests
@@ -25,6 +24,17 @@ def alert(message, alert_hook=None):
         )
     else:
         print(message)
+
+def find(watch_files, hash):
+    for watch_file in watch_files:
+        with open(watch_file) as f:
+            watch_config = yaml.safe_load(f)
+        for watch in watch_config.get("watch", []):
+            _watch = Watch.load(**watch)
+            print(_watch.hash, watch_file)
+            if _watch.hash == hash:
+                print(watch_file, json.dumps(watch))
+                return
 
 def process(config, cache, watch_files, verbose=False):
     cwd = os.getcwd()
@@ -79,6 +89,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--cache", "-c", type=str, default="cache.tar.gz")
     parser.add_argument("--config", type=str, default="watches/conf.yml")
+    parser.add_argument("--find", type=str, default=None)
     parser.add_argument("--verbose", "-v", action="store_true")
     parser.add_argument("--test", "-t", action="store_true")
     parser.add_argument('watches', nargs=argparse.REMAINDER)
@@ -89,9 +100,11 @@ if __name__ == "__main__":
         if os.path.isfile(args.config):
             with open(args.config) as f:
                 config = yaml.safe_load(f).get("config", {})
-    watch_files = set([x for xs in [glob.glob(y, recursive=True) for y in args.watches] for x in xs])
+    watch_files = set([x for xs in [y if os.path.isfile(y) else glob.glob(os.path.join(y, "**/*.y*ml"), recursive=True) for y in args.watches] for x in xs])
 
-    if args.test:
+    if args.find:
+        find(watch_files, args.find)
+    elif args.test:
         process(config, Cache(cache_path=None), watch_files, verbose=args.verbose)
     else:
         cache = Cache(cache_path=args.cache, encryption_key=config.get("key"))

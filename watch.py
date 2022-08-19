@@ -92,7 +92,7 @@ if __name__ == "__main__":
     parser.add_argument("--find", type=str, default=None)
     parser.add_argument("--verbose", "-v", action="store_true")
     parser.add_argument("--test", "-t", action="store_true")
-    parser.add_argument('watches', nargs=argparse.REMAINDER)
+    parser.add_argument('watches', type=str, nargs=argparse.REMAINDER)
     args = parser.parse_args()
 
     config = {}
@@ -100,7 +100,8 @@ if __name__ == "__main__":
         if os.path.isfile(args.config):
             with open(args.config) as f:
                 config = yaml.safe_load(f).get("config", {})
-    watch_files = set([x for xs in [y if os.path.isfile(y) else glob.glob(os.path.join(y, "**/*.y*ml"), recursive=True) for y in args.watches] for x in xs])
+
+    watch_files = set([x for xs in [[y] if os.path.isfile(y) else glob.glob(os.path.join(y, "**/*.y*ml"), recursive=True) for y in args.watches] for x in xs])
 
     if args.find:
         find(watch_files, args.find)

@@ -29,7 +29,7 @@ class Context:
 
     def get_variable(self, key: str, default: typing.Any=None) -> typing.Any:
         if key in self.stack_variables:
-            return self._variables.get(key, [default])[0]
+            return self._variables.get(key, [default])[-1]
         return self._variables.get(key, default)
 
     def expand_context(self, value: typing.Any) -> typing.Any:

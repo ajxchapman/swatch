@@ -16,19 +16,11 @@ class CountWatch(Watch):
 
 class DataWatch(Watch):
     keys = {
-        "data" : (list, [])
+        "data" : (list, list)
     }
 
     def fetch_data(self, ctx: Context) -> typing.List[bytes]:
-        return self.data
-
-class TemplateWatch(Watch):
-    keys = {
-        "template" : (str, "")
-    }
-
-    def fetch_data(self, ctx: Context) -> typing.List[bytes]:
-        return [template_render(self.template, ctx).encode()]
+        return ctx.expand_context(self.data)
 
 class TrueMatch(Match):
     def match(self, ctx: Context, data: typing.List[bytes]) -> bool:

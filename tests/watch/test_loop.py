@@ -36,7 +36,7 @@ class TestLoopWatch(unittest.TestCase):
             }, 
             operator="all", 
             do={
-                "template": "{{ data }}",
+                "data": ["{{ data }}"],
                 "match" : {"cond" : "1", "operator" : "eq"}
             }
         )

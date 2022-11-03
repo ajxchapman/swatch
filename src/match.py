@@ -39,12 +39,12 @@ class CondMatch(Match):
         "comparitor" : (str, "{{ data }}")
     }
     default_key = "value"
-    operators = {"eq" : "eq", "==" : "eq", "lt" : "lt", "<" : "lt", "lte" : "lte", "<=" : "lte", "gt" : "gt", ">" : "gt", "gte" : "gte", ">=" : "gte"}
+    operators = {"eq" : "eq", "==" : "eq", "neq" : "neq", "!=" : "neq", "lt" : "lt", "<" : "lt", "lte" : "lte", "<=" : "lte", "gt" : "gt", ">" : "gt", "gte" : "gte", ">=" : "gte"}
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        m = re.match("(?:(.*)\s+)?(eq|==|lt|<|lte|<=|gt|>|gte|>=)\s+(.*)", self.value)
+        m = re.match("(?:(.*)\s+)?(eq|==|neq|!=|lt|<|lte|<=|gt|>|gte|>=)\s+(.*)", self.value)
         if m is not None:
             self.comparitor, self.operator, self.value = m.groups()
             self.comparitor = self.comparitor or self.keys["comparitor"][1]
@@ -57,7 +57,7 @@ class CondMatch(Match):
         c1 = template_render(self.comparitor, ctx, data=data)
         c2 = template_render(self.value, ctx, data=data)
 
-        if self.operator != "eq":
+        if self.operator not in ["eq", "neq"]:
             try:
                 c1 = int(c1)
                 c2 = int(c2)
@@ -72,6 +72,8 @@ class CondMatch(Match):
             return c1 > c2
         elif self.operator == "gte":
             return c1 >= c2
+        elif self.operator == "neq":
+            return c1 != c2
         return c1 == c2
 
 class NoneMatch(Match):

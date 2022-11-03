@@ -85,6 +85,9 @@ class Watch(Loadable):
         return Match.load(**self.match).match(ctx, data)
 
     def process(self, ctx: Context) -> bool:
+        """
+        Returns True if the result of the Watch should be reported, False otherwise
+        """
         ctx.push_variable("hash", self.hash)
         cache = ctx.get_variable("cache")
 

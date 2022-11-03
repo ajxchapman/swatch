@@ -32,6 +32,16 @@ class TestCondMatch(unittest.TestCase):
         m: Match = Match.load(cond="eq abc")
         self.assertEqual(m.match(self.ctx, [b'abc']), True)
         self.assertEqual(m.match(self.ctx, [b'def']), False)
+    
+    def test_neq_int(self):
+        m: Match = Match.load(cond="neq 10")
+        self.assertEqual(m.match(self.ctx, [b'10']), False)
+        self.assertEqual(m.match(self.ctx, [b'11']), True)
+    
+    def test_neq_str(self):
+        m: Match = Match.load(cond="neq abc")
+        self.assertEqual(m.match(self.ctx, [b'abc']), False)
+        self.assertEqual(m.match(self.ctx, [b'def']), True)
 
     def test_eq_static(self):
         m: Match = Match.load(cond="1 eq 1")

@@ -367,3 +367,45 @@ class OnceWatch(Watch):
         if match:
             cache.put_entry(f"{self.hash}-once", True)
         return match
+
+class TemplateWatch(Watch):
+    keys = {
+        "selectors": (None, list), # Selectors do not make sense for 'once'
+        "match": (None, None), # Match does not make sense for 'once'
+        "template" : (str, None),
+        "variables" : (dict, dict),
+        "watch" : (None, None),
+    }
+
+    def get_comment(self, ctx: Context) -> typing.List[str]:
+        if self.watch is None:
+            raise WatchException("Cannot get comment of unprocessed template watch")
+        
+        return self.comment
+
+    def process(self, ctx: Context) -> bool:
+        self.watch = ctx.get_variable("templates").get(self.template)
+        if self.watch is None:
+            raise WatchException(f"Unknown template '{self.template}'")
+        self.watch = Watch.load(**self.watch)
+        # Fixup the template hash to ensure it is unique per variable set
+        self.watch.update_hash(self.variables)
+
+        # Push the template variables into the context
+        for k, v in self.variables.items():
+            ctx.push_variable(k, v)
+
+        try:
+            match = self.watch.process(ctx)
+
+            if match:
+                # Process comment whilst template variables are still in the context
+                if self.comment is None:
+                    self.comment = self.watch.get_comment(ctx)
+                else:
+                    self.comment = [template_render(self.comment, ctx), self.watch.get_comment(ctx)]
+        finally:
+            for k in self.variables.keys():
+                ctx.pop_variable(k)
+
+        return match

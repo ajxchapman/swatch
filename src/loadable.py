@@ -97,6 +97,10 @@ class Loadable:
         lobj.hash = lobj.hashobj.hexdigest()
         return lobj
 
+    def update_hash(self, arg: object) -> None:
+        self.hashobj = hash_args(arg, self.hashobj)
+        self.hash = self.hashobj.hexdigest()
+
     def __init__(self, **kwargs):
         # Generic init method to set the kwargs to instance variables
         for k, v in kwargs.items():

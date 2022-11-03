@@ -48,6 +48,8 @@ def process(config: dict, cache: Cache, watch_files: typing.List[str], verbose: 
          # Load variables into the context
         for k, v in watch_config.get("variables", {}).items():
             ctx.set_variable(k, ctx.expand_context(v))
+        # Load templates into the context
+        ctx.set_variable("templates", watch_config.get("templates", {}))
 
         try:
             with tempfile.TemporaryDirectory() as tmpdir:

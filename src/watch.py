@@ -336,3 +336,34 @@ class ConditionalWatch(Watch):
     
     def match_data(self, ctx: Context, data: typing.List[bytes]) -> bool:
         return self.matched
+
+class OnceWatch(Watch):
+    default_key = "watch"
+    keys= {
+        "selectors": (None, list), # Selectors do not make sense for 'once'
+        "match": (None, None), # Match does not make sense for 'once'
+        "watch" : (dict, dict)
+    }
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Ensure to propogate 'version' up the tree
+        self.watch = Watch.load(**{**self.watch, "version" : self.version})
+
+    def render(self) -> str:
+        return f"Once({self.watch.render()})"
+
+    def get_comment(self, ctx: Context) -> typing.List[str]:
+        if self.comment is None:
+            return self.watch.get_comment(ctx)
+        return [template_render(self.comment, ctx), self.watch.get_comment(ctx)]
+
+    def process(self, ctx: Context) -> bool:
+        cache = ctx.get_variable("cache")
+        if cache.get_entry(f"{self.hash}-once") is not None:
+            return False
+        
+        match = self.watch.process(ctx)
+        if match:
+            cache.put_entry(f"{self.hash}-once", True)
+        return match

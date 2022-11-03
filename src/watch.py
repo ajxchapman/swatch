@@ -126,7 +126,7 @@ class UrlWatch(Watch):
         "headers" : (dict, dict),
         "cookies" : (dict, dict),
         "data" : (str, None), 
-        "code" : (int, 200),
+        "code" : (lambda x: x if x is None else int(x), 200),
         "download" : (str, None)
     }
 

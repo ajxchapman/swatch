@@ -74,7 +74,7 @@ class Watch(Loadable):
         try:
             trigger, comment, data = self.process(ctx)
         except:
-            failure_count = cache.get_entry(f"{self.hash}-failures")
+            failure_count = cache.get_entry(f"{self.hash}-failures", 0)
             
             if ctx["config"].get("verbose") == True:
                 logger.exception(f"{self.hash}:{int(time.time() - starttime):04}:Error:{failure_count}")

@@ -95,6 +95,7 @@ if __name__ == "__main__":
                 config = {**config, **yaml.safe_load(f).get("config", {})}
 
     watch_files = set([x for xs in [[y] if os.path.isfile(y) else glob.glob(os.path.join(y, "**/*.y*ml"), recursive=True) for y in args.watches] for x in xs])
+    logger.debug(f"Loading watch files: {watch_files}")
 
     if args.find:
         find(watch_files, args.find)

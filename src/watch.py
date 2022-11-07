@@ -74,11 +74,11 @@ class Watch(Loadable):
         try:
             trigger, comment, data = self.process(ctx)
         except:
-            failure_count = cache.get_entry(f"{self.hash}-failures", 0)
+            failure_count = (cache.get_entry(f"{self.hash}-failures") or 0) + 1
+            cache.put_entry(f"{self.hash}-failures", failure_count)
             
             if ctx["config"].get("verbose") == True:
                 logger.exception(f"{self.hash}:{int(time.time() - starttime):04}:Error:{failure_count}")
-            
             else:
                 logger.error(f"{self.hash}:{int(time.time() - starttime):04}:Error:{failure_count}")
             
@@ -154,7 +154,6 @@ class DataWatch(Watch):
             data = self.select_data(ctx, data)
             action_trigger = self.match_data(ctx, data)
         except:
-            cache.put_entry(f"{self.hash}-failures", (cache.get_entry(f"{self.hash}-failures") or 0) + 1)
             raise
         else:
             # Clear any previous failure count

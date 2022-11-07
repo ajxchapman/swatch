@@ -118,7 +118,7 @@ class SliceSelector(Selector):
         return data[self.start:self.end]
 
 class NewSelector(Selector):
-    def run_all(self, ctx: Context, data:bytes) -> typing.List[bytes]:
+    def run_all(self, ctx: Context, data:typing.List[bytes]) -> typing.List[bytes]:
         cache: Cache = ctx.get_variable("cache")
         old_set = set(cache.get_file(ctx.get_variable("hash")))
 

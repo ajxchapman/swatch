@@ -1,8 +1,10 @@
 from __future__ import annotations
 import hashlib
+import logging
 import typing
 import types
 
+logger = logging.getLogger(__name__)
 
 class LoadableException(Exception):
     pass
@@ -61,12 +63,17 @@ class Loadable:
         else:
             ltype = next(kwargs.keys().__iter__())
             lvalue = kwargs[ltype]
-        
+
         lctype = f"{cls.__name__}_{ltype}".lower()
         if not lctype in cls.__classes:
             raise LoadableException(f"Unknown {cls.__name__} class {ltype}")
+
         lcls = cls.__classes[lctype]
         lcls_keys = cls.__class_keys[lctype]
+
+        logger.debug(f"Loading {cls.__name__} type {lctype}")
+        logger.debug(f"\tKeys: {lcls_keys}")
+        logger.debug(f"\tKwargs: {kwargs}")
         
         # If the loadable defines a default key, set the "type" value to the default_key name
         if lvalue is not None and hasattr(lcls, "default_key"):

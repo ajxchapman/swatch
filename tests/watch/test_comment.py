@@ -36,10 +36,10 @@ class TestCommentWatch(unittest.TestCase):
             "comment" : "Comment1.2"
         }], comment="Comment1")
 
-        w.process(self.ctx)
+        _, comment, _ = w.process(self.ctx)
 
-        self.assertListEqual(w.get_comment(self.ctx), ["Comment1", ["Comment1.1"], ["Comment1.2"]])
-        self.assertEqual(render_comment(w.get_comment(self.ctx)), "Comment1\n  Comment1.1\n  Comment1.2")
+        self.assertListEqual(comment, ["Comment1", ["Comment1.1", "Comment1.2"]])
+        self.assertEqual(render_comment(comment), "Comment1\n  Comment1.1\n  Comment1.2")
     
     def test_group_comment_blank(self):
         w = Watch.load(group=[{
@@ -55,10 +55,10 @@ class TestCommentWatch(unittest.TestCase):
             "comment" : "Comment1.2"
         }], comment="Comment1")
 
-        w.process(self.ctx)
+        _, comment, _ = w.process(self.ctx)
 
-        self.assertListEqual(w.get_comment(self.ctx), ["Comment1", ["Comment1.1"], [], ["Comment1.2"]])
-        self.assertEqual(render_comment(w.get_comment(self.ctx)), "Comment1\n  Comment1.1\n  Comment1.2")
+        self.assertListEqual(comment, ["Comment1", ["Comment1.1", "Comment1.2"]])
+        self.assertEqual(render_comment(comment), "Comment1\n  Comment1.1\n  Comment1.2")
 
     def test_group_fail_comment(self):
         w = Watch.load(group=[{
@@ -68,13 +68,13 @@ class TestCommentWatch(unittest.TestCase):
         }, {
             "type": "count",
             "match" : {"type" : "false"},
-            "comment" : "Comment Failurl"
+            "comment" : "Comment Failure"
         }])
 
-        w.process(self.ctx)
+        _, comment, _ = w.process(self.ctx)
 
-        self.assertListEqual(w.get_comment(self.ctx), [["Comment Success"]])
-        self.assertEqual(render_comment(w.get_comment(self.ctx)), "Comment Success")
+        self.assertListEqual(comment, ["Comment Success"])
+        self.assertEqual(render_comment(comment), "Comment Success")
 
     def test_group_nocomment(self):
         w = Watch.load(group=[{
@@ -87,10 +87,10 @@ class TestCommentWatch(unittest.TestCase):
             "comment" : "Comment2"
         }])
 
-        w.process(self.ctx)
+        _, comment, _ = w.process(self.ctx)
 
-        self.assertListEqual(w.get_comment(self.ctx), [["Comment1"], ["Comment2"]])
-        self.assertEqual(render_comment(w.get_comment(self.ctx)), "Comment1\nComment2")
+        self.assertListEqual(comment, ["Comment1", "Comment2"])
+        self.assertEqual(render_comment(comment), "Comment1\nComment2")
     
     def test_group_nocomment_blank(self):
         w = Watch.load(group=[{
@@ -106,10 +106,10 @@ class TestCommentWatch(unittest.TestCase):
             "comment": "Comment2"
         }])
 
-        w.process(self.ctx)
+        _, comment, _ = w.process(self.ctx)
 
-        self.assertListEqual(w.get_comment(self.ctx), [["Comment1"], [], ["Comment2"]])
-        self.assertEqual(render_comment(w.get_comment(self.ctx)), "Comment1\nComment2")
+        self.assertListEqual(comment, ["Comment1", "Comment2"])
+        self.assertEqual(render_comment(comment), "Comment1\nComment2")
 
     def test_group_nested(self):
         w = Watch.load(group=[{
@@ -129,8 +129,8 @@ class TestCommentWatch(unittest.TestCase):
             "comment": "Comment1.2"
         }], comment="Comment1")
 
-        w.process(self.ctx)
-        self.assertEqual(render_comment(w.get_comment(self.ctx)), "Comment1\n  Comment1.1\n    Comment1.1.1\n  Comment1.2")
+        _, comment, _ = w.process(self.ctx)
+        self.assertEqual(render_comment(comment), "Comment1\n  Comment1.1\n    Comment1.1.1\n  Comment1.2")
 
     def test_conditional_comment(self):
         w = Watch.load(conditional={
@@ -142,10 +142,10 @@ class TestCommentWatch(unittest.TestCase):
             "comment" : "Comment1.1"
         }, comment="Comment1")
 
-        w.process(self.ctx)
+        _, comment, _ = w.process(self.ctx)
 
-        self.assertListEqual(w.get_comment(self.ctx), ["Comment1", ["Comment1.1"]])
-        self.assertEqual(render_comment(w.get_comment(self.ctx)), "Comment1\n  Comment1.1")
+        self.assertListEqual(comment, ["Comment1", ["Comment1.1"]])
+        self.assertEqual(render_comment(comment), "Comment1\n  Comment1.1")
 
     def test_conditional_nocomment(self):
         w = Watch.load(conditional={
@@ -157,7 +157,7 @@ class TestCommentWatch(unittest.TestCase):
             "comment" : "Comment"
         })
 
-        w.process(self.ctx)
+        _, comment, _ = w.process(self.ctx)
 
-        self.assertListEqual(w.get_comment(self.ctx), ["Comment"])
-        self.assertEqual(render_comment(w.get_comment(self.ctx)), "Comment")
+        self.assertListEqual(comment, ["Comment"])
+        self.assertEqual(render_comment(comment), "Comment")

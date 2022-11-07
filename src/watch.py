@@ -1,3 +1,4 @@
+import logging
 import os
 import requests
 import signal
@@ -6,13 +7,14 @@ import time
 import typing
 from urllib.parse import urlparse
 
-
+from src.action import Action
 from src.context import Context
-from src.diff import Diff
 from src.loadable import Loadable, hash_args
 from src.match import Match, MatchException
 from src.selector import Selector, SelectorException
 from src.template import template_render
+
+logger = logging.getLogger(__name__)
 
 class WatchException(Exception):
     pass
@@ -36,30 +38,75 @@ def render_comment(comments: typing.List[str], indent: int=0) -> str:
 
 class Watch(Loadable):
     keys = {
-        "selectors" : (list, []),
-        "store" : (str, None),
-        "match" : (lambda x: x if isinstance(x, dict) else {"type" : x}, {"type" : "cache"}),
-        "diff" : (lambda x: x if isinstance(x, dict) else {"type" : x}, None),
         "comment" : (str, None),
         "before" : (dict, None),
         "after" : (dict, None),
+        "action_data" : (dict, None),
+        "actions" : (list, list),
         "version" : (str, "1") # For cache busting
     }
     hash_skip = ["comment"]
 
-    def render(self) -> str:
-        return self.hash
-
     def get_comment(self, ctx: Context) -> typing.List[str]:
-        if self.comment is not None:
-            data = ctx.get_variable(self.hash)
-            if self.diff is not None:
-                diff = Diff.load(**self.diff)
-                data, cache_data = diff.diff(ctx.get_variable("cache").get_file(self.hash), data)
-                ctx.get_variable("cache").put_file(self.hash, cache_data)
+        return [ctx.expand_context(self.comment)] if self.comment is not None else []
+
+    def get_data(self, ctx: Context) -> typing.List[dict]:
+        return [ctx.expand_context(self.action_data)] if self.action_data is not None else []
+
+    def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
+        raise WatchException("Not implemented")
+
+    def run(self, ctx: Context) -> None:
+        """
+        Entrypoint into the top level watch
+        """
+        starttime = time.time()
+        config = ctx.get_variable("config")
+        cache = ctx.get_variable("cache")
+        
+        actions = [Action.load(**x) for x in self.actions]
+        if "default_action" in config:
+            try:
+                actions.append(Action.load(**config["default_action"]))
+            except Exception as e:
+                logger.warning("Unable to load default action, skipping")
+
+        try:
+            trigger, comment, data = self.process(ctx)
+            if trigger:
+                logger.info(f"{self.hash}:{int(time.time() - starttime):04}:True")
+
+                print(render_comment(comment))
+                # action_data["comment"] = render_comment(action_data.get("comment", []))
+                # for action in actions:
+                #     action.report(ctx, action_data)
+            else:
+                logger.info(f"{self.hash}:{int(time.time() - starttime):04}:False")
+        except:
+            failure_count = cache.get_entry(f"{self.hash}-failures")
             
-            return [template_render(self.comment, ctx, data=data)]
-        return []
+            if ctx["config"].get("verbose") == True:
+                logger.exception(f"{self.hash}:{int(time.time() - starttime):04}:Error:{failure_count}")
+            
+            else:
+                logger.error(f"{self.hash}:{int(time.time() - starttime):04}:Error:{failure_count}")
+            
+            if failure_count in [3, 10, 25, 50]:
+                action_data = {
+                    "error": f"{self.hash}:{ctx.get_variable('watch_file')} has failed {failure_count} times in a row"
+                }
+
+                for action in actions:
+                    action.error(ctx, action_data)
+
+# Watches which overload `fetch_data`
+
+class DataWatch(Watch):
+    keys = {
+        "store" : (str, None),
+        "selectors" : (list, list),
+        "match" : (lambda x: x if isinstance(x, dict) else {"type" : x}, {"type" : "cache"}),
+    }
 
     def fetch_data(self, ctx: Context) -> typing.List[bytes]:
         """
@@ -84,46 +131,53 @@ class Watch(Loadable):
 
         return Match.load(**self.match).match(ctx, data)
 
-    def process(self, ctx: Context) -> bool:
+    def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
         """
-        Returns True if the result of the Watch should be reported, False otherwise
+        Entrypoint into an individual (potentially nested) watch.
+        Returns a tuple of (action_trigger, action_comment, action_data) with `action_trigger` True if the action_data of the Watch should be reported, False otherwise
         """
-        ctx.push_variable("hash", self.hash)
         cache = ctx.get_variable("cache")
-
         # Set the last run time
         cache.put_entry(f"{self.hash}-executed", int(time.time()))
+        ctx.push_variable("hash", self.hash)
 
         try:
-            # Execute the `before` step if it exists
+            # Execute the `before` step within the try block to ensure exception halt processing
             if self.before is not None:
                 watch = Watch.load(**{**self.before, "match": "none"})
                 watch.process(ctx)
                 
             data = self.fetch_data(ctx)
             data = self.select_data(ctx, data)
-
-            # Clear any previous failure count
-            cache.put_entry(f"{self.hash}-failures", 0)
+            action_trigger = self.match_data(ctx, data)
         except:
             cache.put_entry(f"{self.hash}-failures", (cache.get_entry(f"{self.hash}-failures") or 0) + 1)
             raise
+        else:
+            # Clear any previous failure count
+            cache.put_entry(f"{self.hash}-failures", 0)
+
+            if not action_trigger:
+                return False, [], []
+
+            # Store selected data in the context
+            ctx.set_variable(self.hash, data)
+            if self.store is not None:
+                ctx.set_variable(self.store, data)
+            ctx.push_variable("data", data)
+            
+            try:
+                return True, self.get_comment(ctx), self.get_data(ctx)
+            finally:
+                ctx.pop_variable("data")
         finally:
-             # Execute the `after` step if it exists
+             # Execute the `after` step within the finally block to ensure it is always executed
             if self.after is not None:
                 watch = Watch.load(**{**self.after, "match": "none"})
                 watch.process(ctx)
+            ctx.pop_variable("hash")
 
-        if self.store is not None:
-            ctx.set_variable(self.store, data)
-        # Store selected data in the context
-        ctx.set_variable(self.hash, data)
-
-        result = self.match_data(ctx, data)
-        ctx.pop_variable("hash")
-        return result
-
-class UrlWatch(Watch):
+class UrlWatch(DataWatch):
     keys = {
         "method" : (str, "GET"),
         "headers" : (dict, dict),
@@ -133,12 +187,12 @@ class UrlWatch(Watch):
         "download" : (str, None)
     }
 
-    def render(self) -> str:
-        return self.url
-
     def get_comment(self, ctx: Context) -> typing.List[str]:
-        ctx.set_variable("URL", self.url)
-        return super().get_comment(ctx)
+        try:
+            ctx.push_variable("URL", self.url)
+            return super().get_comment(ctx)
+        finally:
+            ctx.pop_variable("URL")
 
     def fetch_data(self, ctx: Context) -> typing.List[bytes]:
         ex_url = ctx.expand_context(self.url)
@@ -178,7 +232,7 @@ class UrlWatch(Watch):
         
         return [r.content]
 
-class CmdWatch(Watch):
+class CmdWatch(DataWatch):
     keys = {
         "shell" : (str, "/bin/sh"),
         "sudo": (bool, False),
@@ -212,104 +266,106 @@ class CmdWatch(Watch):
             return [stdout, stderr]
         return [stdout]
 
+
+# Watches which overload `process`
+
 class MultipleWatch(Watch):
     OPERATOR_ALL = ("all", "and")
     OPERATOR_ANY = ("any", "or")
     OPERATOR_LAST = "last"
 
     keys = {
-        "selectors": (None, list), # Selectors do not make sense here
-        "match": (None, None), # Match does not make sense here
-        "operator" : "any",
-        "matched" : (None, list),
-        "comments" : (None, list)
+        "operator" : "any"
     }
 
-    def get_comment(self, ctx: Context) -> typing.List[str]:
-        if self.comment is None:
-            return self.comments
-        return [template_render(self.comment, ctx), *self.comments]
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.watches = []
 
-    def match_data(self, ctx: Context, data: typing.List[bytes]) -> bool:
-        # Return False if no elements were fetched
-        if len(self.matched) == 0:
-            return False
-        
-        if self.operator in GroupWatch.OPERATOR_ALL:
-            return all(self.matched)
-        elif self.operator in GroupWatch.OPERATOR_ANY:
-            return any(self.matched)
-        elif self.operator == GroupWatch.OPERATOR_LAST:
-            return self.matched[-1]
-        raise WatchFetchException(f"Unknown operator '{self.operator}'")
+
+    def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
+        comment = []
+        data = []
+        trigger = False
+        _trigger = False
+
+        for watch in self.watches:
+            _trigger, _comment, _data = watch.process(ctx)
+            if self.operator in GroupWatch.OPERATOR_ALL:
+                if not _trigger:
+                    # Early exit on the ALL operator
+                    return False, [], []
+
+            trigger |= _trigger
+            if _trigger:
+                comment.extend(_comment)
+                data.extend(_data)
+
+        if not trigger:
+            return False, [], []
+
+        if self.operator == GroupWatch.OPERATOR_LAST:
+            comment = [comment[-1]] if len(comment) else []
+            data = [data[-1]] if len(data) else []
+            trigger = _trigger
+
+        if self.comment is not None:
+            comment = [*super().get_comment(ctx), comment]
+        return trigger, comment, data
 
 class GroupWatch(MultipleWatch):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # Ensure to propogate 'version' up the tree
-        self.group = [Watch.load(**{**x, "version" : self.version}) for x in self.group]
-
-    def render(self) -> str:
-        return "Group[" + ", ".join([x.render() for x in self.group]) + "]"
-
-    def fetch_data(self, ctx: Context) -> typing.List[bytes]:
-        data = []
-        for x in self.group:
-            match = x.process(ctx)
-            self.matched.append(match)
-            if match:
-                data.extend(ctx.get_variable(x.hash))
-                # Early evaluate comments to mitigate context changes
-                self.comments.append(x.get_comment(ctx))
-            # Early exit of 'all' operator
-            if self.operator in GroupWatch.OPERATOR_ALL and not match:
-                break
-        return data
-
-class LoopWatch(MultipleWatch):
+    default_key = "group"
     keys = {
-        "do" : (dict, {}),
-        "as" : (str, "data")
+        "group" : (list, list)
     }
 
+    def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
+        self.watches = [Watch.load(**x) for x in self.group]
+        return super().process(ctx)
+
+class LoopWatch(MultipleWatch):
+    default_key = "loop"
+    keys = {
+        "loop" : (dict, dict),
+        "do" : (dict, dict),
+        "as" : (str, "loop"),
+        "operator" : (str, "all"),
+    }
+
+    def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
+        loop = Watch.load(**{**self.loop, "version": self.version})
+        trigger, _, _ = loop.process(ctx)
+        if not trigger:
+            return False, [], []
+        
+        # Create a new tempalte based off the `do` definition
+        ctx.get_variable("templates")[self.hash] = self.do
+        self.watches = []
+        for data in ctx.get_variable(loop.hash):
+            self.watches.append(Watch.load(template=self.hash, variables={getattr(self, "as"): data}))
+        
+        return super().process(ctx)
+    
+class SubWatch(Watch):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.loop = Watch.load(**{**self.loop, "version": self.version})
-        self.iterations = []
+        self.subwatch = None
 
-    def render(self) -> str:
-        return "Loop(" + self.loop.render() + ") {" + self.do.render() + "}"
-    
-    def fetch_data(self, ctx: Context) -> typing.List[bytes]:
-        data = []
-        if self.loop.process(ctx):
-            for datum in ctx.get_variable(self.loop.hash):
-                # Dynamically create a new Watch object for each loop iteration
-                w = Watch.load(**{**self.do, "version": self.version})
-                self.iterations.append(w)
+    def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
+        if not isinstance(self.subwatch, Watch):
+            self.subwatch = Watch.load(**{**self.subwatch, "version": self.version})
 
-                # Need to update the dynamically created object hash for each loop iteration
-                w.hashobj = hash_args(datum, w.hashobj)
-                w.hash = w.hashobj.hexdigest()
+        trigger, comment, data = self.subwatch.process(ctx)
+        if trigger:
+            if self.comment is not None:
+                comment = [*self.get_comment(ctx), comment]
 
-                ctx.set_variable(getattr(self, "as"), datum)
-                match = w.process(ctx)
-                self.matched.append(match)
-                if match:
-                    data.extend(ctx.get_variable(w.hash))
-                     # Early evaluate comments to mitigate context changes
-                    self.comments.append(w.get_comment(ctx))
-                # Early exit of 'all' operator
-                if self.operator in GroupWatch.OPERATOR_ALL and not match:
-                    break
-        return data
+        return trigger, comment, data
 
-class ConditionalWatch(Watch):
+class ConditionalWatch(SubWatch):
     keys = {
-        "selectors": (None, list), # Selectors do not make sense for 'conditional'
-        "match": (None, None), # Match does not make sense for 'conditional'
         "operator" : (str, "and"), 
-        "then" : (dict, dict)
+        "then" : (dict, dict)       # `then` is a more appropiate name than `subwatch` for conditionals
     }
 
     def __init__(self, **kwargs):
@@ -317,95 +373,54 @@ class ConditionalWatch(Watch):
         if not isinstance(self.conditional, list):
             self.conditional = [self.conditional]
         self.conditional = Watch.load(group=self.conditional, operator=self.operator, version=self.version)
-        self.then = Watch.load(**{**self.then, "version": self.version})
-        self.matched = False
+        self.subwatch = Watch.load(**{**self.then, "version": self.version})
 
-    def render(self) -> str:
-        return "Conditional(" + self.conditional.render() + ") {" + self.then.render() + "}"
+    def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
+        trigger, _, _ = self.conditional.process(ctx)
+        if not trigger:
+            return False, [], []
+        
+        return super().process(ctx)
 
-    def get_comment(self, ctx: Context) -> typing.List[str]:
-        if self.comment is None:
-            return self.then.get_comment(ctx)
-        return [template_render(self.comment, ctx), self.then.get_comment(ctx)]
-
-    def fetch_data(self, ctx: Context) -> typing.List[bytes]:
-        if self.conditional.process(ctx):
-            self.matched = self.then.process(ctx)
-            return ctx.get_variable(self.then.hash)
-        return []
-    
-    def match_data(self, ctx: Context, data: typing.List[bytes]) -> bool:
-        return self.matched
-
-class OnceWatch(Watch):
-    default_key = "watch"
-    keys= {
-        "selectors": (None, list), # Selectors do not make sense for 'once'
-        "match": (None, None), # Match does not make sense for 'once'
-        "watch" : (dict, dict)
+class OnceWatch(SubWatch):
+    keys = {
+        "once" : (dict, dict)
     }
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # Ensure to propogate 'version' up the tree
-        self.watch = Watch.load(**{**self.watch, "version" : self.version})
-
-    def render(self) -> str:
-        return f"Once({self.watch.render()})"
-
-    def get_comment(self, ctx: Context) -> typing.List[str]:
-        if self.comment is None:
-            return self.watch.get_comment(ctx)
-        return [template_render(self.comment, ctx), self.watch.get_comment(ctx)]
-
-    def process(self, ctx: Context) -> bool:
+    def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
         cache = ctx.get_variable("cache")
         if cache.get_entry(f"{self.hash}-once") is not None:
-            return False
-        
-        match = self.watch.process(ctx)
-        if match:
-            cache.put_entry(f"{self.hash}-once", True)
-        return match
+            return False, [], []
 
-class TemplateWatch(Watch):
+        self.subwatch = Watch.load(**self.once)
+        trigger, comment, data = super().process(ctx)
+        if trigger:
+            cache.put_entry(f"{self.hash}-once", True)
+        return trigger, comment, data
+
+class TemplateWatch(SubWatch):
     keys = {
-        "selectors": (None, list), # Selectors do not make sense for 'once'
-        "match": (None, None), # Match does not make sense for 'once'
         "template" : (str, None),
         "variables" : (dict, dict),
-        "watch" : (None, None),
     }
 
-    def get_comment(self, ctx: Context) -> typing.List[str]:
-        if self.watch is None:
-            raise WatchException("Cannot get comment of unprocessed template watch")
-        
-        return self.comment
-
-    def process(self, ctx: Context) -> bool:
-        self.watch = ctx.get_variable("templates").get(self.template)
-        if self.watch is None:
+    def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
+        template = ctx.get_variable("templates").get(self.template)
+        if template is None:
             raise WatchException(f"Unknown template '{self.template}'")
-        self.watch = Watch.load(**self.watch)
-        # Fixup the template hash to ensure it is unique per variable set
-        self.watch.update_hash(self.variables)
+        
+        # Load and fixup the template hash to ensure it is unique per variable set
+        self.subwatch = Watch.load(**template)
+        self.subwatch.update_hash(self.variables)
 
-        # Push the template variables into the context
+        # Push template variables into the context
         for k, v in self.variables.items():
             ctx.push_variable(k, v)
 
         try:
-            match = self.watch.process(ctx)
-
-            if match:
-                # Process comment whilst template variables are still in the context
-                if self.comment is None:
-                    self.comment = self.watch.get_comment(ctx)
-                else:
-                    self.comment = [template_render(self.comment, ctx), self.watch.get_comment(ctx)]
+            return super().process(ctx)
         finally:
+            # Pop template variables from the context
             for k in self.variables.keys():
                 ctx.pop_variable(k)
 
-        return match

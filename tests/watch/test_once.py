@@ -20,10 +20,10 @@ class TestOnceWatch(unittest.TestCase):
             "match" : {"type" : "true"}
         })
         
-        result = w.process(self.ctx)
-        self.assertEqual(result, True)
-        self.assertEqual(w.watch.count, 1)
+        trigger, _, _ = w.process(self.ctx)
+        self.assertEqual(trigger, True)
+        self.assertEqual(w.subwatch.count, 1)
 
-        result = w.process(self.ctx)
-        self.assertEqual(result, False)
-        self.assertEqual(w.watch.count, 1)
+        trigger, _, _ = w.process(self.ctx)
+        self.assertEqual(trigger, False)
+        self.assertEqual(w.subwatch.count, 1)

@@ -23,10 +23,10 @@ class TestConditionalWatch(unittest.TestCase):
             "match" : {"type" : "true"}
         })
         
-        result = w.process(self.ctx)
-        self.assertEqual(result, True)
-        self.assertEqual(w.conditional.group[0].count, 1)
-        self.assertEqual(w.then.count, 1)
+        trigger, _, _ = w.process(self.ctx)
+        self.assertEqual(trigger, True)
+        self.assertEqual(w.conditional.watches[0].count, 1)
+        self.assertEqual(w.subwatch.count, 1)
 
     def test_success_failure(self):
         w = Watch.load(conditional={
@@ -37,10 +37,10 @@ class TestConditionalWatch(unittest.TestCase):
             "match" : {"type" : "false"}
         })
         
-        result = w.process(self.ctx)
-        self.assertEqual(result, False)
-        self.assertEqual(w.conditional.group[0].count, 1)
-        self.assertEqual(w.then.count, 1)
+        trigger, _, _ = w.process(self.ctx)
+        self.assertEqual(trigger, False)
+        self.assertEqual(w.conditional.watches[0].count, 1)
+        self.assertEqual(w.subwatch.count, 1)
 
     def test_failure_success(self):
         w = Watch.load(conditional={
@@ -51,10 +51,10 @@ class TestConditionalWatch(unittest.TestCase):
             "match" : {"type" : "true"}
         })
         
-        result = w.process(self.ctx)
-        self.assertEqual(result, False)
-        self.assertEqual(w.conditional.group[0].count, 1)
-        self.assertEqual(w.then.count, 0)
+        trigger, _, _ = w.process(self.ctx)
+        self.assertEqual(trigger, False)
+        self.assertEqual(w.conditional.watches[0].count, 1)
+        self.assertEqual(w.subwatch.count, 0)
     
     def test_failure_failure(self):
         w = Watch.load(conditional={
@@ -65,7 +65,7 @@ class TestConditionalWatch(unittest.TestCase):
             "match" : {"type" : "false"}
         })
         
-        result = w.process(self.ctx)
-        self.assertEqual(result, False)
-        self.assertEqual(w.conditional.group[0].count, 1)
-        self.assertEqual(w.then.count, 0)
+        trigger, _, _ = w.process(self.ctx)
+        self.assertEqual(trigger, False)
+        self.assertEqual(w.conditional.watches[0].count, 1)
+        self.assertEqual(w.subwatch.count, 0)

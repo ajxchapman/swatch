@@ -22,10 +22,10 @@ class TestGroupWatch(unittest.TestCase):
             "match" : {"type" : "true"}
         }], operator="all")
         
-        result = w.process(self.ctx)
-        self.assertEqual(result, True)
-        self.assertEqual(w.group[0].count, 1)
-        self.assertEqual(w.group[1].count, 1)
+        trigger, _, _ = w.process(self.ctx)
+        self.assertEqual(trigger, True)
+        self.assertEqual(w.watches[0].count, 1)
+        self.assertEqual(w.watches[1].count, 1)
 
     def test_and_failure(self):
         w = Watch.load(group=[{
@@ -36,10 +36,10 @@ class TestGroupWatch(unittest.TestCase):
             "match" : {"type" : "true"}
         }], operator="all")
         
-        result = w.process(self.ctx)
-        self.assertEqual(result, False)
-        self.assertEqual(w.group[0].count, 1)
-        self.assertEqual(w.group[1].count, 0) # Ensure early exit
+        trigger, _, _ = w.process(self.ctx)
+        self.assertEqual(trigger, False)
+        self.assertEqual(w.watches[0].count, 1)
+        self.assertEqual(w.watches[1].count, 0) # Ensure early exit
 
     def test_or_success(self):
         w = Watch.load(group=[{
@@ -50,10 +50,10 @@ class TestGroupWatch(unittest.TestCase):
             "match" : {"type" : "false"}
         }], operator="any")
         
-        result = w.process(self.ctx)
-        self.assertEqual(result, True)
-        self.assertEqual(w.group[0].count, 1)
-        self.assertEqual(w.group[1].count, 1)
+        trigger, _, _ = w.process(self.ctx)
+        self.assertEqual(trigger, True)
+        self.assertEqual(w.watches[0].count, 1)
+        self.assertEqual(w.watches[1].count, 1)
 
     def test_or_failure(self):
         w = Watch.load(group=[{
@@ -64,10 +64,10 @@ class TestGroupWatch(unittest.TestCase):
             "match" : {"type" : "false"}
         }], operator="any")
         
-        result = w.process(self.ctx)
-        self.assertEqual(result, False)
-        self.assertEqual(w.group[0].count, 1)
-        self.assertEqual(w.group[1].count, 1)
+        trigger, _, _ = w.process(self.ctx)
+        self.assertEqual(trigger, False)
+        self.assertEqual(w.watches[0].count, 1)
+        self.assertEqual(w.watches[1].count, 1)
 
     def test_last_success(self):
         w = Watch.load(group=[{
@@ -78,10 +78,10 @@ class TestGroupWatch(unittest.TestCase):
             "match" : {"type" : "true"}
         }], operator="last")
         
-        result = w.process(self.ctx)
-        self.assertEqual(result, True)
-        self.assertEqual(w.group[0].count, 1)
-        self.assertEqual(w.group[1].count, 1)
+        trigger, _, _ = w.process(self.ctx)
+        self.assertEqual(trigger, True)
+        self.assertEqual(w.watches[0].count, 1)
+        self.assertEqual(w.watches[1].count, 1)
 
 
     def test_last_failure(self):
@@ -93,7 +93,7 @@ class TestGroupWatch(unittest.TestCase):
             "match" : {"type" : "false"}
         }], operator="last")
         
-        result = w.process(self.ctx)
-        self.assertEqual(result, False)
-        self.assertEqual(w.group[0].count, 1)
-        self.assertEqual(w.group[1].count, 1)
+        trigger, _, _ = w.process(self.ctx)
+        self.assertEqual(trigger, False)
+        self.assertEqual(w.watches[0].count, 1)
+        self.assertEqual(w.watches[1].count, 1)

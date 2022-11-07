@@ -11,18 +11,18 @@ class ActionException(Exception):
     pass
 
 class Action(Loadable):
-    def report(self, ctx: Context) -> None:
+    def report(self, ctx: Context, data: dict) -> None:
         raise ActionException("Not Implemented")
 
-    def error(self, ctx: Context) -> None:
+    def error(self, ctx: Context, data: dict) -> None:
         pass
 
 class LogAction(Action):
-    def report(self, ctx: Context) -> None:
-        logger.info(ctx.get_variable("comment"))
+    def report(self, ctx: Context, data: dict) -> None:
+        logger.info(data.get("comment"))
     
-    def error(self, ctx: Context) -> None:
-        logger.error(ctx.get_variable("error"))
+    def error(self, ctx: Context, data: dict) -> None:
+        logger.error(data.get("error"))
 
 class SlackAction(Action):
     keys = {
@@ -31,7 +31,7 @@ class SlackAction(Action):
     }
     
     def run(self, message: str) -> None:
-        data = json.dumps(self.payload).replace("MESSAGE", json.dumps(message))
+        data = json.dumps(self.payload).replace("MESSAGE", json.dumps(message).strip('"'))
         r = requests.request(
             "POST",
             self.url,
@@ -39,8 +39,8 @@ class SlackAction(Action):
             data=data.encode()
         )
 
-    def execute(self, ctx: Context) -> None:
-        self.run(ctx.get_variable("comment"))
+    def report(self, ctx: Context, data: dict) -> None:
+        self.run(data.get("comment"))
     
-    def error(self, ctx: Context) -> None:
-        self.run(ctx.get_variable("error"))
+    def error(self, ctx: Context, data: dict) -> None:
+        self.run(data.get("error"))

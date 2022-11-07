@@ -73,15 +73,6 @@ class Watch(Loadable):
 
         try:
             trigger, comment, data = self.process(ctx)
-            if trigger:
-                logger.info(f"{self.hash}:{int(time.time() - starttime):04}:True")
-
-                print(render_comment(comment))
-                # action_data["comment"] = render_comment(action_data.get("comment", []))
-                # for action in actions:
-                #     action.report(ctx, action_data)
-            else:
-                logger.info(f"{self.hash}:{int(time.time() - starttime):04}:False")
         except:
             failure_count = cache.get_entry(f"{self.hash}-failures")
             
@@ -98,6 +89,18 @@ class Watch(Loadable):
 
                 for action in actions:
                     action.error(ctx, action_data)
+        else:
+            if trigger:
+                logger.info(f"{self.hash}:{int(time.time() - starttime):04}:True")
+
+                action_data = {
+                  "comment": render_comment(comment),
+                  "data" : data
+                }
+                for action in actions:
+                    action.report(ctx, action_data)
+            else:
+                logger.info(f"{self.hash}:{int(time.time() - starttime):04}:False")
 
 # Watches which overload `fetch_data`
 

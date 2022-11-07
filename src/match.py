@@ -16,9 +16,18 @@ class Match(Loadable):
 
 class CacheMatch(Match):
     """
-    CacheMatch returns True when the key:data paid does *not* exist in the cache
+    CacheMatch returns True when the key:data pair does *not* exist in the cache
     """
+
+    keys = {
+        "empty" : (bool, False) # Consider an empty data array
+    }
+
     def match(self, ctx: Context, data: typing.List[bytes]) -> bool:
+        if not self.empty:
+            if len(data) == 0:
+                return False
+
         cache: Cache = ctx.get_variable("cache")
 
         key_digest = ctx.get_variable("hash")

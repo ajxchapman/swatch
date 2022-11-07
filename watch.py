@@ -71,20 +71,23 @@ if __name__ == "__main__":
     logger = logging.getLogger()
     logger.addHandler(ch)
     logger.setLevel(logging.INFO)
-    # logger.setLevel(logging.DEBUG)
     
     parser = argparse.ArgumentParser()
     parser.add_argument("--cache", "-c", type=str, default="cache.tar.gz")
     parser.add_argument("--config", type=str, default="watches/conf.yml")
     parser.add_argument("--find", type=str, default=None)
     parser.add_argument("--verbose", "-v", action="store_true")
+    parser.add_argument("--debug", action="store_true")
     parser.add_argument("--test", "-t", action="store_true")
     parser.add_argument('watches', type=str, nargs=argparse.REMAINDER)
     args = parser.parse_args()
 
+    if args.debug:
+        logger.setLevel(logging.DEBUG)
+
     config = {
         "default_action" : {"type" : "log"},
-        "verbose" : args.verbose
+        "verbose" : args.verbose or args.debug
     }
     if not (args.test):
         if os.path.isfile(args.config):

@@ -72,8 +72,6 @@ class Loadable:
         lcls_keys = cls.__class_keys[lctype]
 
         logger.debug(f"Loading {cls.__name__} type {lctype}")
-        logger.debug(f"\tKeys: {lcls_keys}")
-        logger.debug(f"\tKwargs: {kwargs}")
         
         # If the loadable defines a default key, set the "type" value to the default_key name
         if lvalue is not None and hasattr(lcls, "default_key"):

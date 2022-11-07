@@ -220,6 +220,7 @@ class UrlWatch(DataWatch):
             data=ex_data,
             stream=True if self.download is not None else False)
         
+        logger.debug(f"UrlWatch: [{r.status_code} {r.reason}] {ex_url}")
         if self.code is not None and r.status_code != self.code:
             raise WatchFetchException(f"Status code {r.status_code} != {self.code}")
         
@@ -259,6 +260,7 @@ class CmdWatch(DataWatch):
                 os.killpg(os.getpgid(p.pid), signal.SIGTERM)
             raise WatchFetchException("Command Timeout")
 
+        logger.debug(f"CmdWatch: [{p.returncode}] {ex_cmd}")
         if self.return_code is not None and p.returncode != self.return_code:
             raise WatchFetchException(f"Return code {p.returncode} != {self.return_code}")
 

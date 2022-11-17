@@ -33,9 +33,35 @@ jobs:
           ssh-key: ${{ secrets.SOURCEMON_WATCH_REPO_KEY || '' }}
           token: ${{ secrets.SOURCEMON_WATCH_REPO_TOKEN || github.token }}
           path: watches
+      
+      - name: Checkout watch data repository
+        # Work-around secrets not accessible in conditionals as per https://github.com/actions/runner/issues/520
+        env:
+          SOURCEMON_WATCHDATA_REPO: ${{ secrets.SOURCEMON_WATCHDATA_REPO }}
+        if: ${{ env.SOURCEMON_WATCHDATA_REPO != null }}
+        uses: actions/checkout@v3
+        with: 
+          repository: ${{ secrets.SOURCEMON_WATCHDATA_REPO }}
+          ssh-key: ${{ secrets.SOURCEMON_WATCHDATA_REPO_KEY || '' }}
+          token: ${{ secrets.SOURCEMON_WATCHDATA_REPO_TOKEN || github.token }}
+          path: watch-data
 
       - name: Execute watch
         run: python3 ./watch.py --cache ./cache.tar.gz ./watches/
+
+      - name: Commit watch data repository
+        # Work-around secrets not accessible in conditionals as per https://github.com/actions/runner/issues/520
+        env:
+          SOURCEMON_WATCHDATA_REPO: ${{ secrets.SOURCEMON_WATCHDATA_REPO }}
+        if: ${{ env.SOURCEMON_WATCHDATA_REPO != null }}
+        run: |
+          pushd watch-data
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add -A
+          git commit --allow-empty -m "Watch $(date +%s)"
+          git push
+          popd
 
       - uses: actions/upload-artifact@v3
         with:

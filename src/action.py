@@ -109,8 +109,6 @@ class RenderAction(Action):
             with open(render_path, "r") as f:
                 render_data = json.load(f)
 
-        print("report", render_path)
-
         # Add or replace the data entries
         for datum in data.get("data", []):
             found = False

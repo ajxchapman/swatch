@@ -65,11 +65,11 @@ class Watch(Loadable):
         cache = ctx.get_variable("cache")
         
         actions = [Action.load(**x) for x in self.actions]
-        if "default_action" in config:
+        if "default_actions" in config:
             try:
-                actions.append(Action.load(**config["default_action"]))
+                actions.extend([Action.load(**x) for x in config["default_actions"]])
             except Exception as e:
-                logger.warning("Unable to load default action, skipping")
+                logger.warning("Unable to load default actions, skipping")
 
         try:
             trigger, comment, data = self.process(ctx)

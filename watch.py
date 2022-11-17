@@ -86,7 +86,7 @@ if __name__ == "__main__":
         logger.setLevel(logging.DEBUG)
 
     config = {
-        "default_action" : {"type" : "log"},
+        "default_actions" : [{"type" : "log"}],
         "verbose" : args.verbose or args.debug
     }
     if not (args.test):

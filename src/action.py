@@ -46,7 +46,7 @@ class FileLogAction(LogAction):
         if self.logger is not None:
             return
         
-        log_path = os.path.join(ctx.get_variable("base_dir"), ctx.get_variable("config").get("log_path", "logs"))
+        log_path = os.path.join(ctx.get_variable("base_dir"), ctx.get_variable("config").get("data_path", "data"))
         os.makedirs(log_path, exist_ok=True)
         
         handler = logging.FileHandler(os.path.join(log_path, self.file))
@@ -100,7 +100,7 @@ class RenderAction(Action):
         self.name = os.path.split(self.name)[-1] + ".json"
 
     def report(self, ctx: Context, data: dict) -> None:
-        render_path = os.path.join(ctx.get_variable("base_dir"), ctx.get_variable("config").get("render_path", "render"))
+        render_path = os.path.join(ctx.get_variable("base_dir"), ctx.get_variable("config").get("data_path", "data"))
         os.makedirs(render_path, exist_ok=True)
 
         render_data = []

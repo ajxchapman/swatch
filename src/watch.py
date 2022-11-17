@@ -51,7 +51,15 @@ class Watch(Loadable):
         return [ctx.expand_context(self.comment)] if self.comment is not None else []
 
     def get_data(self, ctx: Context) -> typing.List[dict]:
-        return [ctx.expand_context(self.action_data)] if self.action_data is not None else []
+        if self.action_data is None:
+            return []
+        
+        # Add default keys to the returned data
+        return [{
+            "id" : ctx.get_variable("hash"),
+            "executed" : ctx.get_variable("cache").get_entry(f"{ctx.get_variable('hash')}-executed"), 
+            **ctx.expand_context(self.action_data)
+        }]
 
     def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
         raise WatchException("Not implemented")

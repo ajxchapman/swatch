@@ -60,11 +60,15 @@ class FileLogAction(LogAction):
 
     def report(self, ctx: Context, data: dict) -> None:
         self.create_logger(ctx)
-        getattr(self.logger, self.level)(data.get("comment"))
+
+        for line in data.get("comment").splitlines():
+            getattr(self.logger, self.level)(line)
     
     def error(self, ctx: Context, data: dict) -> None:
         self.create_logger(ctx)
-        getattr(self.logger, self.error_level)(data.get("error"))
+        
+        for line in data.get("error").splitlines():
+            getattr(self.logger, self.error_level)(line)
 
 class SlackAction(Action):
     keys = {

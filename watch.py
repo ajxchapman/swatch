@@ -32,6 +32,7 @@ def process(config: dict, cache: Cache, watch_files: typing.List[str]):
         ctx.set_variable("config", config)
         ctx.set_variable("cache", cache)
         ctx.set_variable("watch_file", watch_file)
+        ctx.set_variable("base_dir", cwd)
         # Load templates into the context
         ctx.set_variable("templates", watch_config.get("templates", {}))
          # Load variables into the context

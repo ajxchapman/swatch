@@ -90,7 +90,16 @@ class Loadable:
                 if isinstance(ktype, types.FunctionType):
                     lkwargs[k] = ktype(kwargs[k])
                 else:
-                    lkwargs[k] = kwargs[k] if isinstance(kwargs[k], ktype) else ktype(kwargs[k])
+                    if isinstance(kwargs[k], ktype):
+                        lkwargs[k] = kwargs[k]
+                    # Attempt to cast basic types
+                    elif ktype in {str, int, bool}:
+                        lkwargs[k] = ktype(kwargs[k])
+                    else:
+                        raise LoadableException(f"Unable to case argument '{k}' with value '{kwargs[k]}' as type '{ktype.__name__}'")
+                
+                # Remove assigned keys from the supplied arguments
+                del kwargs[k]
             else:
                 # If the default is a callable, call it
                 if isinstance(kdefault, (type, types.FunctionType)):

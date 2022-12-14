@@ -247,6 +247,8 @@ class CmdWatch(DataWatch):
     keys = {
         "shell" : (str, "/bin/sh"),
         "sudo": (bool, False),
+        "env": (dict, dict),
+        "cwd": (str, "."),
         "timeout" : (lambda x: x if x is None else int(x), 30),
         "return_code" : (lambda x: x if x is None else int(x), 0),
         "output" : (lambda x: x if x in ["stdout", "stderr", "both"] else "stdout", "stdout")
@@ -254,13 +256,23 @@ class CmdWatch(DataWatch):
 
     def fetch_data(self, ctx: Context) -> typing.List[bytes]:
         ex_cmd = ctx.expand_context(self.cmd)
+        ex_env = ctx.expand_context({**os.environ, **self.env})
+        ex_cwd = ctx.expand_context(self.cwd)
         shell = [self.shell]
         if self.sudo:
             shell = ["sudo"] + shell
 
         logger.debug(f"CmdWatch: Executing command: {ex_cmd}")
         try:
-            p = subprocess.Popen(shell, start_new_session=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            p = subprocess.Popen(
+                shell, 
+                start_new_session=True, 
+                stdin=subprocess.PIPE, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE,
+                env=ex_env,
+                cwd=ex_cwd
+            )
             stdout, stderr = p.communicate(ex_cmd.encode(), timeout=self.timeout)
         except subprocess.TimeoutExpired as e:
             if self.sudo:

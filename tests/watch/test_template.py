@@ -3,7 +3,7 @@ import unittest
 from src.cache import Cache
 from src.context import Context
 from src.loadable import Loadable
-from src.watch import Watch, WatchException
+from src.watch import Watch, TemplateWatch, WatchException
 
 templates = {
     "count" : {
@@ -48,14 +48,14 @@ class TestTemplateWatch(unittest.TestCase):
         
         trigger, _, _ = w.process(self.ctx)
         self.assertEqual(trigger, True)
-        self.assertEqual(w.subwatch.count, 1)
+        self.assertEqual(w.watches[0].count, 1)
 
     def test_data(self):
         w = Watch.load(template="static", variables={"k1" : "v1"})
         
         trigger, _, _ = w.process(self.ctx)
         self.assertEqual(trigger, True)
-        self.assertLessEqual(self.ctx.get_variable(w.subwatch.hash), ["result v1"])
+        self.assertLessEqual(self.ctx.get_variable(w.watches[0].hash), ["result v1"])
 
     def test_hash(self):
         w1 = Watch.load(template="static", variables={"k1" : "v1"})
@@ -65,48 +65,38 @@ class TestTemplateWatch(unittest.TestCase):
         w2.process(self.ctx)
 
         self.assertNotEqual(w1.hash, w2.hash)
-        self.assertNotEqual(w1.subwatch.hash, w2.subwatch.hash)
+        self.assertNotEqual(w1.watches[0].hash, w2.watches[0].hash)
 
     def test_render(self):
-        w = Watch.load(template="render0", body={"test" : 1})
-        self.assertDictEqual(w.render_template(self.ctx), {"test" : 1})
+        self.assertDictEqual(TemplateWatch.render_template(self.ctx, ["render0"], body={"test" : 1}), {"test" : 1})
 
     def test_render1(self):
-        w = Watch.load(template="render1", body={"test" : 1})
-        self.assertDictEqual(w.render_template(self.ctx), {"test" : 1})
+        self.assertDictEqual(TemplateWatch.render_template(self.ctx, ["render1"], body={"test" : 1}), {"test" : 1})
 
     def test_render_body(self):
-        w = Watch.load(template="render_key", body={"test" : 1})
-        self.assertDictEqual(w.render_template(self.ctx), {"key" : {"test" : 1}})
-
-    def test_render_kwargs(self):
-        w = Watch.load(template="render_key", test=1)
-        self.assertDictEqual(w.render_template(self.ctx), {"key" : {"test" : 1}})
+        self.assertDictEqual(TemplateWatch.render_template(self.ctx, ["render_key"], body={"test" : 1}), {"key" : {"test" : 1}})
 
     def test_render_dict(self):
         w = Watch.load(template="render_dict", body={"test" : 1})
-        self.assertDictEqual(w.render_template(self.ctx), {"key" : {"k1" : "v1", "test" : 1}})
+        self.assertDictEqual(TemplateWatch.render_template(self.ctx, ["render_dict"], body={"test" : 1}), {"key" : {"k1" : "v1", "test" : 1}})
 
     def test_render_dict_list_error(self):
-        w = Watch.load(template="render_dict", body=[1, 2])
         with self.assertRaises(WatchException):
-            w.render_template(self.ctx)
+            TemplateWatch.render_template(self.ctx, ["render_dict"], body=[1, 2])
 
     def test_render_list(self):
-        w = Watch.load(template="render_list", body=[1, 2])
-        self.assertDictEqual(w.render_template(self.ctx), {"key" : ["v1", "v2", 1, 2]})
+        self.assertDictEqual(TemplateWatch.render_template(self.ctx, ["render_list"], body=[1, 2]), {"key" : ["v1", "v2", 1, 2]})
 
     def test_render_list_dict_error(self):
-        w = Watch.load(template="render_list", body={"test" : 1})
         with self.assertRaises(WatchException):
-            w.render_template(self.ctx)
+            TemplateWatch.render_template(self.ctx, ["render_list"], body={"test" : 1})
 
     def test_loadable_class_template_precedence(self):
-        w = Watch.load(template="render_static_class", body={"count" : None})
-        w = Watch.load(**w.render_template(self.ctx))
+        t = TemplateWatch.render_template(self.ctx, ["render_static_class"], body={"count" : None})
+        w = Watch.load(**t)
         self.assertIsInstance(w, Loadable._Loadable__classes['watch_static'])
     
-    def test_loadable_class_body__precedence(self):
-        w = Watch.load(template="render0", body={"count" : None})
-        w = Watch.load(**w.render_template(self.ctx))
+    def test_loadable_class_body_precedence(self):
+        t = TemplateWatch.render_template(self.ctx, ["render0"], body={"count" : None})
+        w = Watch.load(**t)
         self.assertIsInstance(w, Loadable._Loadable__classes['watch_count'])

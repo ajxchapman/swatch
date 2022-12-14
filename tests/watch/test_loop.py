@@ -27,7 +27,7 @@ class TestLoopWatch(unittest.TestCase):
         trigger, _, _ = w.process(self.ctx)
         self.assertEqual(trigger, True)
         self.assertEqual(len(w.watches), 4)
-        self.assertEqual(w.watches[0].subwatch.count, 1)
+        self.assertEqual(w.watches[0].count, 1)
         self.assertNotEqual(w.watches[0].hash, w.watches[1].hash)
 
     def test_all_failure(self):
@@ -35,6 +35,7 @@ class TestLoopWatch(unittest.TestCase):
                 "static": [b'1', b'2', b'3', b'4'],
                 "match" : {"type" : "true"}
             }, 
+            operator="and",
             do={
                 "type": "count",
                 "match" : {"cond" : "1", "operator" : "eq", "comparitor" : "{{ loop }}"}
@@ -43,10 +44,9 @@ class TestLoopWatch(unittest.TestCase):
         
         trigger, _, _ = w.process(self.ctx)
         self.assertEqual(trigger, False)
-        self.assertEqual(len(w.watches), 4)
-        self.assertEqual(w.watches[0].subwatch.count, 1)
-        self.assertEqual(w.watches[1].subwatch.count, 1)
-        self.assertEqual(w.watches[2].subwatch, None)
+        self.assertEqual(len(w.watches), 2)
+        self.assertEqual(w.watches[0].count, 1)
+        self.assertEqual(w.watches[1].count, 1)
 
     def test_zero_iterations(self):
         w = Watch.load(loop={

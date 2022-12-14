@@ -5,12 +5,15 @@ from src.watch import DataWatch, Context
 from src.match import Match
 
 class CountWatch(DataWatch):
+    class_count = 0
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.count = 0
 
     def fetch_data(self, ctx: Context) -> typing.List[bytes]:
         self.count += 1
+        self.__class__.class_count += 1
         return [str(self.count).encode()]
 
 class StaticWatch(DataWatch):

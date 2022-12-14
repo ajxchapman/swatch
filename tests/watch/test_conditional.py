@@ -25,8 +25,8 @@ class TestConditionalWatch(unittest.TestCase):
         
         trigger, _, _ = w.process(self.ctx)
         self.assertEqual(trigger, True)
-        self.assertEqual(w.conditional.watches[0].count, 1)
-        self.assertEqual(w.subwatch.count, 1)
+        self.assertEqual(len(w.watches), 1)
+        self.assertEqual(w.watches[0].count, 1)
 
     def test_success_failure(self):
         w = Watch.load(conditional={
@@ -39,8 +39,8 @@ class TestConditionalWatch(unittest.TestCase):
         
         trigger, _, _ = w.process(self.ctx)
         self.assertEqual(trigger, False)
-        self.assertEqual(w.conditional.watches[0].count, 1)
-        self.assertEqual(w.subwatch.count, 1)
+        self.assertEqual(len(w.watches), 1)
+        self.assertEqual(w.watches[0].count, 1)
 
     def test_failure_success(self):
         w = Watch.load(conditional={
@@ -53,8 +53,7 @@ class TestConditionalWatch(unittest.TestCase):
         
         trigger, _, _ = w.process(self.ctx)
         self.assertEqual(trigger, False)
-        self.assertEqual(w.conditional.watches[0].count, 1)
-        self.assertEqual(w.subwatch.count, 0)
+        self.assertEqual(len(w.watches), 0)
     
     def test_failure_failure(self):
         w = Watch.load(conditional={
@@ -67,5 +66,4 @@ class TestConditionalWatch(unittest.TestCase):
         
         trigger, _, _ = w.process(self.ctx)
         self.assertEqual(trigger, False)
-        self.assertEqual(w.conditional.watches[0].count, 1)
-        self.assertEqual(w.subwatch.count, 0)
+        self.assertEqual(len(w.watches), 0)

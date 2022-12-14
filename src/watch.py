@@ -181,7 +181,7 @@ class DataWatch(Watch):
             finally:
                 ctx.pop_variable("data")
         finally:
-             # Execute the `after` step within the finally block to ensure it is always executed
+            # Execute the `after` step within the finally block to ensure it is always executed
             if self.after is not None:
                 watch = Watch.load(**{**self.after, "match": "none"})
                 watch.process(ctx)
@@ -312,6 +312,8 @@ class MultipleWatch(Watch):
         super().__init__(**kwargs)
         self.watches = []
 
+    def gen(self, ctx: Context) -> Watch:
+        raise WatchException("Not Implemented")
 
     def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
         comment = []
@@ -319,29 +321,45 @@ class MultipleWatch(Watch):
         trigger = False
         _trigger = False
 
-        for watch in self.watches:
-            _trigger, _comment, _data = watch.process(ctx)
-            if self.operator in GroupWatch.OPERATOR_ALL:
-                if not _trigger:
-                    # Early exit on the ALL operator
-                    return False, [], []
+        try:
+            # Execute the `before` step within the try block to ensure exception halt processing
+            if self.before is not None:
+                watch = Watch.load(**{**self.before, "match": "none"})
+                watch.process(ctx)
+                
+            for watch in self.gen(ctx):
+                self.watches.append(watch)
+                _trigger, _comment, _data = watch.process(ctx)
 
-            trigger |= _trigger
-            if _trigger:
-                comment.extend(_comment)
-                data.extend(_data)
+                print(self.operator, _trigger, _comment, _data)
+                if self.operator in MultipleWatch.OPERATOR_ALL:
+                    if not _trigger:
+                        # Early exit on the ALL operator
+                        return False, [], []
 
-        if not trigger:
-            return False, [], []
+                trigger |= _trigger
+                if _trigger:
+                    comment.extend(_comment)
+                    data.extend(_data)
+        except:
+            raise
+        else:
+            if not trigger:
+                return False, [], []
 
-        if self.operator == GroupWatch.OPERATOR_LAST:
-            comment = [comment[-1]] if len(comment) else []
-            data = [data[-1]] if len(data) else []
-            trigger = _trigger
+            if self.operator == MultipleWatch.OPERATOR_LAST:
+                comment = [comment[-1]] if len(comment) else []
+                data = [data[-1]] if len(data) else []
+                trigger = _trigger
 
-        if self.comment is not None:
-            comment = [*super().get_comment(ctx), comment]
-        return trigger, comment, data
+            if self.comment is not None:
+                comment = [*super().get_comment(ctx), comment]
+            return trigger, comment, data
+        finally:
+            # Execute the `after` step within the finally block to ensure it is always executed
+            if self.after is not None:
+                watch = Watch.load(**{**self.after, "match": "none"})
+                watch.process(ctx)
 
 class GroupWatch(MultipleWatch):
     default_key = "group"
@@ -349,9 +367,10 @@ class GroupWatch(MultipleWatch):
         "group" : (list, list)
     }
 
-    def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
-        self.watches = [Watch.load(**x) for x in self.group]
-        return super().process(ctx)
+    def gen(self, ctx: Context) -> Watch:
+        for x in self.group:
+            yield Watch.load(**x)
+        
 
 class LoopWatch(MultipleWatch):
     default_key = "loop"
@@ -359,76 +378,59 @@ class LoopWatch(MultipleWatch):
         "loop" : (dict, dict),
         "do" : (dict, dict),
         "as" : (str, "loop"),
-        "operator" : (str, "all"),
+        "operator" : (str, "or"),
     }
 
-    def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
+    def gen(self, ctx: Context) -> Watch:
         loop = Watch.load(**{**self.loop, "version": self.version})
         trigger, _, _ = loop.process(ctx)
-        if not trigger:
-            return False, [], []
         
-        # Create a new tempalte based off the `do` definition
-        ctx.get_variable("templates")[self.hash] = self.do
-        self.watches = []
-        for data in ctx.get_variable(loop.hash):
-            self.watches.append(Watch.load(template=self.hash, variables={getattr(self, "as"): data}))
-        
-        return super().process(ctx)
-    
-class SubWatch(Watch):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.subwatch = None
-
-    def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
-        if not isinstance(self.subwatch, Watch):
-            self.subwatch = Watch.load(**{**self.subwatch, "version": self.version})
-
-        trigger, comment, data = self.subwatch.process(ctx)
         if trigger:
-            if self.comment is not None:
-                comment = [*self.get_comment(ctx), comment]
-
-        return trigger, comment, data
-
-class ConditionalWatch(SubWatch):
+            for data in ctx.get_variable(loop.hash):
+                ctx.push_variable(getattr(self, "as"), data)
+                
+                # Load and fixup the template hash to ensure it is unique per variable set
+                watch = Watch.load(**self.do)
+                watch.update_hash({getattr(self, "as") : data})
+                yield watch
+                
+                ctx.pop_variable(getattr(self, "as"))
+    
+class ConditionalWatch(MultipleWatch):
     keys = {
+        "conditional" : (lambda x: x if isinstance(x, list) else [x], []),
         "operator" : (str, "and"), 
-        "then" : (dict, dict)       # `then` is a more appropiate name than `subwatch` for conditionals
+        "then" : (dict, dict)
     }
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        if not isinstance(self.conditional, list):
-            self.conditional = [self.conditional]
-        self.conditional = Watch.load(group=self.conditional, operator=self.operator, version=self.version)
-        self.subwatch = Watch.load(**{**self.then, "version": self.version})
-
-    def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
-        trigger, _, _ = self.conditional.process(ctx)
-        if not trigger:
-            return False, [], []
+    def gen(self, ctx: Context) -> Watch:
+        condition = Watch.load(group=self.conditional, operator=self.operator, version=self.version)
+        trigger, _, _ = condition.process(ctx)
         
-        return super().process(ctx)
+        if trigger:
+            yield Watch.load(**{**self.then, "version": self.version})
 
-class OnceWatch(SubWatch):
+
+class OnceWatch(MultipleWatch):
     keys = {
         "once" : (dict, dict)
     }
+
+    def gen(self, ctx: Context) -> Watch:
+        yield Watch.load(**self.once)
 
     def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
         cache = ctx.get_variable("cache")
         if cache.get_entry(f"{self.hash}-once") is not None:
             return False, [], []
 
-        self.subwatch = Watch.load(**self.once)
         trigger, comment, data = super().process(ctx)
+
         if trigger:
             cache.put_entry(f"{self.hash}-once", True)
         return trigger, comment, data
 
-class TemplateWatch(SubWatch):
+class TemplateWatch(MultipleWatch):
     keys = {
         "template" : (lambda x: x if isinstance(x, list) else [x], []),
         "requires" : (list, list),
@@ -436,7 +438,8 @@ class TemplateWatch(SubWatch):
         "body" : (lambda x: x if isinstance(x, (dict, list)) else None, dict)
     }
 
-    def replace_body(self, template: dict, body: any) -> typing.Tuple[bool, any]:
+    @classmethod
+    def replace_body(cls, template: dict, body: any) -> typing.Tuple[bool, any]:
         if len(template) == 1 and "body" in template:
             # Replace `body:`
             if template["body"] is None:
@@ -452,16 +455,18 @@ class TemplateWatch(SubWatch):
         for k, v in list(template.items()):
             if isinstance(v, dict):
                 # Recurse child dict
-                replaced, _template = self.replace_body(v, body)
+                replaced, _template = cls.replace_body(v, body)
                 if replaced:
                     return True, {**template, k : _template} # Order preserved
             # TODO: Look into lists as well?
 
         return False, template
 
-    def render_template(self, ctx: Context) -> dict:
+    @classmethod
+    def render_template(cls, ctx: Context, templates: typing.List[str], body: dict=None) -> dict:
+        body = body or {}
         template = {}
-        for x in self.template:
+        for x in templates:
             _template = ctx.get_variable("templates").get(x)
             if _template is None:
                 raise WatchException(f"Unknown template '{x}'")
@@ -469,8 +474,7 @@ class TemplateWatch(SubWatch):
             # Combine templates, giving later templates precidence
             template = {**template, **_template}
 
-        body = self.body or self.kwargs
-        replaced, template = self.replace_body(template, body)
+        replaced, template = cls.replace_body(template, body)
         # If a replacement `body:` key is not found in the template stack, attempt to identify the correct resulting watch type
         if not replaced:
             template_type = Watch.get_type(template)
@@ -482,6 +486,11 @@ class TemplateWatch(SubWatch):
                 # Using order of body, apply template keys, then apply body keys
                 template = {**body, **template, **body}
 
+        return template
+
+    def gen(self, ctx: Context) -> Watch:
+        template = TemplateWatch.render_template(ctx, self.template, body=self.body or self.kwargs)
+        
         # Ensure all required template variables are included
         if "requires" in template:
             for r in template["requires"]:
@@ -491,19 +500,16 @@ class TemplateWatch(SubWatch):
             
             # Remove the meta `requires` key, as it is not a key for the resulting watch
             del template["requires"]
-        return template
-
-    def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
-        template = self.render_template(ctx)
         logger.debug(template)
 
-        ex_variables = ctx.expand_context(self.variables)
-
         # Load and fixup the template hash to ensure it is unique per variable set
-        self.subwatch = Watch.load(**template)
-        self.subwatch.update_hash(ex_variables)
-
+        watch = Watch.load(**template)
+        watch.update_hash(self.variables)
+        yield watch
+    
+    def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
         # Push template variables into the context
+        ex_variables = ctx.expand_context(self.variables)
         for k, v in ex_variables.items():
             ctx.push_variable(k, v)
 

@@ -2,6 +2,7 @@ import unittest
 
 from src.cache import Cache
 from src.context import Context
+from src.loadable import Loadable
 from src.watch import Watch
 
 class TestGroupWatch(unittest.TestCase):
@@ -39,7 +40,7 @@ class TestGroupWatch(unittest.TestCase):
         trigger, _, _ = w.process(self.ctx)
         self.assertEqual(trigger, False)
         self.assertEqual(w.watches[0].count, 1)
-        self.assertEqual(w.watches[1].count, 0) # Ensure early exit
+        self.assertEqual(len(w.watches), 1) # Ensure early exit
 
     def test_or_success(self):
         w = Watch.load(group=[{
@@ -97,3 +98,23 @@ class TestGroupWatch(unittest.TestCase):
         self.assertEqual(trigger, False)
         self.assertEqual(w.watches[0].count, 1)
         self.assertEqual(w.watches[1].count, 1)
+
+    def test_before(self):
+        w = Watch.load(group=[{
+            "type": "static",
+            "match" : {"type" : "true"}
+        }], before={"type": "count"})
+
+        initialCount = Loadable._Loadable__classes['watch_count'].class_count
+        w.process(self.ctx)
+        self.assertEqual(Loadable._Loadable__classes['watch_count'].class_count, initialCount + 1)
+
+    def test_after(self):
+        w = Watch.load(group=[{
+            "type": "static",
+            "match" : {"type" : "true"}
+        }], after={"type": "count"})
+
+        initialCount = Loadable._Loadable__classes['watch_count'].class_count
+        w.process(self.ctx)
+        self.assertEqual(Loadable._Loadable__classes['watch_count'].class_count, initialCount + 1)

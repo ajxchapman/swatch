@@ -22,8 +22,8 @@ class TestOnceWatch(unittest.TestCase):
         
         trigger, _, _ = w.process(self.ctx)
         self.assertEqual(trigger, True)
-        self.assertEqual(w.subwatch.count, 1)
+        self.assertEqual(w.watches[0].count, 1)
 
         trigger, _, _ = w.process(self.ctx)
         self.assertEqual(trigger, False)
-        self.assertEqual(w.subwatch.count, 1)
+        self.assertEqual(w.watches[0].count, 1)

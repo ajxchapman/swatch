@@ -43,14 +43,11 @@ class TestLoadable(unittest.TestCase):
     def test_unknown(self):
         o = Hash.load(type="base", value=123, unknown=456)
         self.assertRaises(AttributeError, lambda: o.unknown)
+        self.assertEqual(o.kwargs["unknown"], 456)
         
     def test_hash(self):
         s = Hash.load(type="base", value=123)
         o = Hash.load(type="base", value=123)
-        self.assertEqual(s.hash, o.hash)
-
-        s = Hash.load(type="base", value=123)
-        o = Hash.load(type="base", value=123, unknown=456)
         self.assertEqual(s.hash, o.hash)
 
         s = Hash.load(type="base", value=123)

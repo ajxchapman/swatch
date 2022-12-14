@@ -6,6 +6,8 @@ import types
 
 logger = logging.getLogger(__name__)
 
+RESERVED_KEYS = ["kwargs"]
+
 class LoadableException(Exception):
     pass
 
@@ -34,6 +36,17 @@ class Loadable:
     __class_keys = {}
 
     @classmethod
+    def get_type(cls, kwargs: dict) -> type[Loadable]:
+        ltype = None
+        if "type" in kwargs:
+            ltype =  kwargs["type"]
+        elif len(kwargs):
+            ltype = next(kwargs.keys().__iter__())
+
+        lctype = f"{cls.__name__}_{ltype}".lower()
+        return cls.__classes.get(lctype)
+
+    @classmethod
     def load(cls, **kwargs) -> Loadable:
         # Load default key values from the Loadable subclasses
         if not cls.__name__ in cls.__loadables:
@@ -49,6 +62,10 @@ class Loadable:
                 }
                 for x in c.__mro__[::-1]:
                     cls.__class_keys[scls_name] = {**cls.__class_keys.get(scls_name, {}), **getattr(x, "keys", {})}
+            
+            for k in cls.__class_keys.keys():
+                if k in RESERVED_KEYS:
+                    raise LoadableException(f"Loadable {cls.__name__} uses reserved key '{k}'")
 
         # Obtain the loadable type from the "type" kwarg or the first kwarg
         # Allows for definitions such as:
@@ -105,6 +122,9 @@ class Loadable:
                 if isinstance(kdefault, (type, types.FunctionType)):
                     kdefault = kdefault()
                 lkwargs[k] = kdefault
+
+        # Assign remaining kwargs to a kwargs key
+        lkwargs["kwargs"] = kwargs
         
         lobj = lcls(**lkwargs)
         lobj.hashobj = hash_args(lkwargs, skip_keys=getattr(lcls, "hash_skip", []))

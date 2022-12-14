@@ -96,7 +96,7 @@ class RenderAction(Action):
     keys = {
         "name" : (str, None),
         "id" : (str, "id"),
-        "sort" : (str, False)
+        "sort" : (list, False)
     }
 
     def __init__(self, **kwargs):
@@ -124,6 +124,7 @@ class RenderAction(Action):
             if not found:
                 render_data.append(datum)
         
-        render_data.sort(key=lambda x: x.get(self.sort or self.id))
+        for key in self.sort or [self.id]:
+            render_data.sort(key=lambda x: x.get(key))
         with open(render_path, "w") as f:
             json.dump(render_data, f, indent=4)

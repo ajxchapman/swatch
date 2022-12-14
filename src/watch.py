@@ -430,21 +430,81 @@ class OnceWatch(SubWatch):
 
 class TemplateWatch(SubWatch):
     keys = {
-        "template" : (str, None),
+        "template" : (lambda x: x if isinstance(x, list) else [x], []),
+        "requires" : (list, list),
         "variables" : (dict, dict),
+        "body" : (lambda x: x if isinstance(x, (dict, list)) else None, dict)
     }
 
-    def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
-        template = ctx.get_variable("templates").get(self.template)
-        if template is None:
-            raise WatchException(f"Unknown template '{self.template}'")
+    def replace_body(self, template: dict, body: any) -> typing.Tuple[bool, any]:
+        if len(template) == 1 and "body" in template:
+            # Replace `body:`
+            if template["body"] is None:
+                return True, body
+            # Append to list of `body: [1, 2, 3]`
+            elif isinstance(template["body"], list) and isinstance(body, list):
+                return True, [*template["body"], *body]
+            # Merge dictionaries of `body: {key: value}`
+            elif isinstance(template["body"], dict) and isinstance(body, dict):
+                return True, {**template["body"], **body}
+            raise WatchException(f"Mismatched template body merge with types {type(template['body']).__name__} and {type(body).__name__}")
         
+        for k, v in list(template.items()):
+            if isinstance(v, dict):
+                # Recurse child dict
+                replaced, _template = self.replace_body(v, body)
+                if replaced:
+                    return True, {**template, k : _template} # Order preserved
+            # TODO: Look into lists as well?
+
+        return False, template
+
+    def render_template(self, ctx: Context) -> dict:
+        template = {}
+        for x in self.template:
+            _template = ctx.get_variable("templates").get(x)
+            if _template is None:
+                raise WatchException(f"Unknown template '{x}'")
+            
+            # Combine templates, giving later templates precidence
+            template = {**template, **_template}
+
+        body = self.body or self.kwargs
+        replaced, template = self.replace_body(template, body)
+        # If a replacement `body:` key is not found in the template stack, attempt to identify the correct resulting watch type
+        if not replaced:
+            template_type = Watch.get_type(template)
+            if template_type is not None:
+                # Assume that template specifies the subwatch type
+                template = {**template, **body}
+            else:
+                # Assume that body specifies the subwatch type
+                # Using order of body, apply template keys, then apply body keys
+                template = {**body, **template, **body}
+
+        # Ensure all required template variables are included
+        if "requires" in template:
+            for r in template["requires"]:
+                if not r in self.variables:
+                    print(template["requires"], list(self.variables))
+                    raise WatchException(f"Template missing required varible '{r}'")
+            
+            # Remove the meta `requires` key, as it is not a key for the resulting watch
+            del template["requires"]
+        return template
+
+    def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
+        template = self.render_template(ctx)
+        logger.debug(template)
+
+        ex_variables = ctx.expand_context(self.variables)
+
         # Load and fixup the template hash to ensure it is unique per variable set
         self.subwatch = Watch.load(**template)
-        self.subwatch.update_hash(self.variables)
+        self.subwatch.update_hash(ex_variables)
 
         # Push template variables into the context
-        for k, v in self.variables.items():
+        for k, v in ex_variables.items():
             ctx.push_variable(k, v)
 
         try:

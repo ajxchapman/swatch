@@ -22,8 +22,16 @@ def find(watch_files, hash):
                 print(watch_file, json.dumps(watch))
                 return
 
-def process(config: dict, cache: Cache, watch_files: typing.List[str]):
+def process(config: dict, cache: Cache, watch_files: typing.List[str], template_file: typing.List[str]) -> None:
     cwd = os.getcwd()
+
+    # Load global templates
+    templates = {}
+    for template_file in template_files:
+        with open(template_file) as f:
+            template_config = yaml.safe_load(f)
+            templates.update(template_config.get("templates", {}))
+
     for watch_file in watch_files:
         with open(watch_file) as f:
             watch_config = yaml.safe_load(f)
@@ -34,7 +42,7 @@ def process(config: dict, cache: Cache, watch_files: typing.List[str]):
         ctx.set_variable("watch_file", watch_file)
         ctx.set_variable("base_dir", cwd)
         # Load templates into the context
-        ctx.set_variable("templates", watch_config.get("templates", {}))
+        ctx.set_variable("templates", {**templates, **watch_config.get("templates", {})})
          # Load variables into the context
         for k, v in watch_config.get("variables", {}).items():
             ctx.set_variable(k, ctx.expand_context(v))
@@ -95,8 +103,20 @@ if __name__ == "__main__":
             with open(args.config) as f:
                 config = {**config, **yaml.safe_load(f).get("config", {})}
 
-    watch_files = set([x for xs in [[y] if os.path.isfile(y) else glob.glob(os.path.join(y, "**/*.y*ml"), recursive=True) for y in args.watches] for x in xs])
+    template_files = set()
+    watch_files = set()
+    if config.get("templates") is not None:
+        template_glob = os.path.join(os.path.dirname(args.config), config.get("templates", "templates"), "**/*.y*ml")
+        template_files = set(glob.glob(template_glob, recursive=True))
+    for x in args.watches:
+        if os.path.isfile(x):
+            watch_files.add(x)
+        else:
+            watch_files.update(glob.glob(os.path.join(x, "**/*.y*ml"), recursive=True))
+    
+    watch_files -= template_files
     logger.debug(f"Loading watch files: {watch_files}")
+    logger.debug(f"Loading template files: {template_files}")
 
     if args.find:
         find(watch_files, args.find)
@@ -105,6 +125,6 @@ if __name__ == "__main__":
     else:
         cache = Cache(cache_path=args.cache, encryption_key=config.get("key"))
         try:
-            process(config, cache, watch_files)
+            process(config, cache, watch_files, template_files)
         finally:
             cache.close()

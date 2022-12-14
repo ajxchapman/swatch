@@ -258,21 +258,25 @@ class CmdWatch(DataWatch):
         if self.sudo:
             shell = ["sudo"] + shell
 
+        logger.debug(f"CmdWatch: Executing command: {ex_cmd}")
         try:
             p = subprocess.Popen(shell, start_new_session=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             stdout, stderr = p.communicate(ex_cmd.encode(), timeout=self.timeout)
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as e:
             if self.sudo:
                 subprocess.run(["sudo", "/bin/kill", "--", f"-{os.getpgid(p.pid)}"])
             else:
                 os.killpg(os.getpgid(p.pid), signal.SIGTERM)
-            raise WatchFetchException("Command Timeout")
+            raise WatchFetchException(f"CmdWatch: Command timeout after {self.timeout} seconds") from e
 
-        logger.debug(f"CmdWatch: [{p.returncode}] {ex_cmd}")
+        logger.debug(f"CmdWatch: Return code: {p.returncode}")
+        _stdout = "\n\t" + "\n\t".join(stdout.decode().splitlines()) if len(stdout) else ""
+        _stderr = "\n\t" + "\n\t".join(stderr.decode().splitlines()) if len(stderr) else ""
         if self.return_code is not None and p.returncode != self.return_code:
-            stdout = b'\n\t'.join(stdout.splitlines()).decode()
-            stderr = b'\n\t'.join(stderr.splitlines()).decode()
-            raise WatchFetchException(f"Return code {p.returncode} != {self.return_code}\nStdout:\n\t{stdout}\nStderr:\n\t{stderr}")
+            raise WatchFetchException(f"CmdWatch: Return code {p.returncode} != {self.return_code}\nStdout:{_stdout}\nStderr:{_stderr}")
+
+        logger.debug(f"CmdWatch: Stdout: {_stdout}")
+        logger.debug(f"CmdWatch: Stderr: {_stderr}")
 
         if self.output == "stderr":
             return [stderr]

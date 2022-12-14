@@ -270,7 +270,7 @@ class CmdWatch(DataWatch):
 
         logger.debug(f"CmdWatch: [{p.returncode}] {ex_cmd}")
         if self.return_code is not None and p.returncode != self.return_code:
-            raise WatchFetchException(f"Return code {p.returncode} != {self.return_code}")
+            raise WatchFetchException(f"Return code {p.returncode} != {self.return_code}\nStdout:\n\t{'\n\t'.join(stdout.splitlines())}\nStderr:\n\t{'\n\t'.join(stderr.splitlines())}")
 
         if self.output == "stderr":
             return [stderr]

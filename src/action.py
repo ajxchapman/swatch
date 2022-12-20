@@ -3,7 +3,7 @@ import json
 import os
 import requests
 
-from src.loadable import Loadable
+from src.loadable import Loadable, type_choice
 from src.context import Context
 
 logger = logging.getLogger(__name__)
@@ -20,8 +20,8 @@ class Action(Loadable):
 
 class LogAction(Action):
     keys = {
-        "level" : (lambda x: x if x in ["debug", "info", "warning", "error", "critical"] else "info", "info"),
-        "error_level" : (lambda x: x if x in ["debug", "info", "warning", "error", "critical"] else "error", "error"),
+        "level" : (type_choice(["debug", "info", "warning", "error", "critical"], default="info"), "info"),
+        "error_level" : (type_choice(["debug", "info", "warning", "error", "critical"], default="error"), "error"),
     }
 
     def report(self, ctx: Context, data: dict) -> None:

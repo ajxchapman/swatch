@@ -57,7 +57,7 @@ class Watch(Loadable):
         # Add default keys to the returned data
         return [{
             "id" : ctx.get_variable("hash"),
-            "executed" : ctx.get_variable("cache").get_entry(f"{ctx.get_variable('hash')}-executed"), 
+            "executed" : ctx.get_variable("starttime"), 
             **ctx.expand_context(self.action_data)
         }]
 
@@ -112,7 +112,7 @@ class Watch(Loadable):
         Entrypoint into the top level watch
         """
         starttime =  time.time()
-        ctx.set_variable("starttime", starttime)
+        ctx.set_variable("starttime", int(starttime))
         config = ctx.get_variable("config")
         cache = ctx.get_variable("cache")
         

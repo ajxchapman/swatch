@@ -11,6 +11,33 @@ RESERVED_KEYS = ["kwargs"]
 class LoadableException(Exception):
     pass
 
+def type_list_of_type(type):
+    def inner(arg):
+        if not isinstance(arg, list):
+            arg = [arg]
+        
+        for x in arg:
+            if not isinstance(x, type):
+                raise LoadableException(f"Argument '{x}' is not of type {type.__name__}")
+        return arg
+    return inner
+
+def type_none_or_type(type):
+    def inner(arg):
+        return arg if arg is None else type(arg)
+    return inner
+
+def type_choice(options, default=None, throw=False):
+    def inner(arg):
+        if arg in options:
+            return arg
+        
+        if throw:
+            raise LoadableException(f"Argument '{arg}' is not one of {options}")
+        return default
+    
+    return inner
+
 def hash_args(arg: object, hash: object=None, skip_keys: typing.List[bytes]=[]) -> object:
     if hash is None:
         hash = hashlib.sha256()
@@ -105,6 +132,7 @@ class Loadable:
                     raise LoadableException(f"Unexpected argument '{k}'")
                 
                 if isinstance(ktype, types.FunctionType):
+                    # Exceptions raised it ktype will bubble
                     lkwargs[k] = ktype(kwargs[k])
                 else:
                     if isinstance(kwargs[k], ktype):
@@ -113,7 +141,7 @@ class Loadable:
                     elif ktype in {str, int, bool}:
                         lkwargs[k] = ktype(kwargs[k])
                     else:
-                        raise LoadableException(f"Unable to case argument '{k}' with value '{kwargs[k]}' as type '{ktype.__name__}'")
+                        raise LoadableException(f"Unable to cast argument '{k}' with value '{kwargs[k]}' as type '{ktype.__name__}'")
                 
                 # Remove assigned keys from the supplied arguments
                 del kwargs[k]

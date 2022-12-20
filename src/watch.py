@@ -307,7 +307,7 @@ class CmdWatch(DataWatch):
         "sudo": (bool, False),
         "env": (dict, dict),
         "cwd": (str, "."),
-        "timeout" : (type, 30),
+        "timeout" : (type_none_or_type(int), 30),
         "return_code" : (type_none_or_type(int), 0),
         "output" : (type_choice(["stdout", "stderr", "both"], default="stdout"), "stdout")
     }

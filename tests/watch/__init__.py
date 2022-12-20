@@ -1,7 +1,7 @@
 from email.policy import default
 import typing
 
-from src.watch import DataWatch, Context
+from src.watch import Watch, DataWatch, Context, WatchException
 from src.match import Match
 
 class CountWatch(DataWatch):
@@ -24,6 +24,10 @@ class StaticWatch(DataWatch):
 
     def fetch_data(self, ctx: Context) -> typing.List[bytes]:
         return ctx.expand_context(self.data)
+
+class ThrowWatch(Watch):
+    def run(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
+        raise WatchException()
 
 class TrueMatch(Match):
     def match(self, ctx: Context, data: typing.List[bytes]) -> bool:

@@ -3,7 +3,7 @@ import unittest
 from src.cache import Cache
 from src.context import Context
 from src.loadable import Loadable
-from src.watch import Watch
+from src.watch import Watch, WatchException
 
 class TestGroupWatch(unittest.TestCase):
     def setUp(self) -> None:
@@ -108,6 +108,26 @@ class TestGroupWatch(unittest.TestCase):
         initialCount = Loadable._Loadable__classes['watch_count'].class_count
         w.process(self.ctx)
         self.assertEqual(Loadable._Loadable__classes['watch_count'].class_count, initialCount + 1)
+
+    def test_before_list(self):
+        w = Watch.load(group=[{
+            "type": "static",
+            "match" : {"type" : "true"}
+        }], before=[{"type": "count"}, {"type": "count"}])
+
+        initialCount = Loadable._Loadable__classes['watch_count'].class_count
+        w.process(self.ctx)
+        self.assertEqual(Loadable._Loadable__classes['watch_count'].class_count, initialCount + 2)
+    
+    def test_before_exception(self):
+        w = Watch.load(group=[{
+            "type": "count",
+            "match" : {"type" : "true"}
+        }], before={"type": "throw"})
+
+        with self.assertRaises(WatchException):
+            w.process(self.ctx)
+        self.assertEqual(len(w.watches), 0)
 
     def test_after(self):
         w = Watch.load(group=[{

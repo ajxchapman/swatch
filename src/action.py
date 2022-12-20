@@ -95,7 +95,7 @@ class RenderAction(Action):
     default_key = "name"
     keys = {
         "name" : (str, None),
-        "id" : (str, "id"),
+        "id" : (str, "id"),     # Name of the `id` field in the resulting json
         "sort" : (list, False)
     }
 

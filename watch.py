@@ -59,7 +59,7 @@ def process(config: dict, cache: Cache, watch_files: typing.List[str], template_
                 # Execute main 'watch' tasks
                 for watch in [Watch.load(**x) for x in watch_config.get("watch", [])]:
                     try:
-                        watch.run(ctx)
+                        watch.execute(ctx)
                     except WatchException:
                         # Early exit out of a watch_file in the event on an exception
                         break

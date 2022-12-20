@@ -9,10 +9,9 @@ from urllib.parse import urlparse
 
 from src.action import Action
 from src.context import Context
-from src.loadable import Loadable, hash_args
-from src.match import Match, MatchException
-from src.selector import Selector, SelectorException
-from src.template import template_render
+from src.loadable import Loadable, type_none_or_type, type_list_of_type, type_choice
+from src.match import Match
+from src.selector import Selector
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +38,8 @@ def render_comment(comments: typing.List[str], indent: int=0) -> str:
 class Watch(Loadable):
     keys = {
         "comment" : (str, None),
-        "before" : (dict, None),
-        "after" : (dict, None),
+        "before" : (type_list_of_type(dict), []),
+        "after" : (type_list_of_type(dict), []),
         "action_data" : (dict, None),
         "actions" : (list, list),
         "version" : (str, "1") # For cache busting
@@ -61,14 +60,58 @@ class Watch(Loadable):
             **ctx.expand_context(self.action_data)
         }]
 
-    def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
+    def run(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
         raise WatchException("Not implemented")
+    
+    def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
+        """
+        Entrypoint into an individual (potentially nested) watch.
+        Returns a tuple of (action_trigger, action_comment, action_data) with `action_trigger` True if the action_data of the Watch should be reported, False otherwise
+        """
+        cache = ctx.get_variable("cache")
+        # Set the last run time
+        cache.put_entry(f"{self.hash}-executed", ctx.get_variable("starttime"))
+        ctx.push_variable("hash", self.hash)
 
-    def run(self, ctx: Context) -> None:
+        try:
+            # Execute the `before` step within the try block to ensure exception halt processing
+            for watch in self.before:
+                watch = Watch.load(**{**watch, "match": "none"})
+                watch.process(ctx)
+            
+            trigger, comment, data = self.run(ctx)
+            
+        except:
+            failure_count = cache.get_entry(f"{self.hash}-failures") or 0
+            cache.put_entry(f"{self.hash}-failures", failure_count + 1)
+            raise
+        else:
+            # Clear any previous failure count
+            cache.put_entry(f"{self.hash}-failures", 0)
+
+            if not trigger:
+                return False, [], []
+            
+            # Record the last triggered time
+            cache.put_entry(f"{self.hash}-triggered", ctx.get_variable("starttime"))
+            return trigger, comment, data
+        finally:
+            # Execute the `after` step within the finally block to ensure it is always executed
+            # Ignore exceptions thrown by the `after` block
+            try:
+               for watch in self.after:
+                    watch = Watch.load(**{**watch, "match": "none"})
+                    watch.process(ctx)
+            except Exception as e:
+                logger.debug(e, exc_info=1)
+            ctx.pop_variable("hash")
+
+    def execute(self, ctx: Context) -> None:
         """
         Entrypoint into the top level watch
         """
-        starttime = time.time()
+        starttime =  time.time()
+        ctx.set_variable("starttime", starttime)
         config = ctx.get_variable("config")
         cache = ctx.get_variable("cache")
         
@@ -82,8 +125,7 @@ class Watch(Loadable):
         try:
             trigger, comment, data = self.process(ctx)
         except:
-            failure_count = (cache.get_entry(f"{self.hash}-failures") or 0) + 1
-            cache.put_entry(f"{self.hash}-failures", failure_count)
+            failure_count = cache.get_entry(f"{self.hash}-failures")
             
             if ctx["config"].get("verbose") == True:
                 logger.exception(f"{self.hash}:{int(time.time() - starttime):04}:Error:{failure_count}")
@@ -109,8 +151,6 @@ class Watch(Loadable):
                     action.report(ctx, action_data)
             else:
                 logger.info(f"{self.hash}:{int(time.time() - starttime):04}:False")
-
-# Watches which overload `fetch_data`
 
 class DataWatch(Watch):
     keys = {
@@ -142,50 +182,67 @@ class DataWatch(Watch):
 
         return Match.load(**self.match).match(ctx, data)
 
-    def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
-        """
-        Entrypoint into an individual (potentially nested) watch.
-        Returns a tuple of (action_trigger, action_comment, action_data) with `action_trigger` True if the action_data of the Watch should be reported, False otherwise
-        """
-        cache = ctx.get_variable("cache")
-        # Set the last run time
-        cache.put_entry(f"{self.hash}-executed", int(time.time()))
-        ctx.push_variable("hash", self.hash)
+    def run(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
+        data = self.select_data(ctx, self.fetch_data(ctx))
+        trigger = self.match_data(ctx, data)
 
-        try:
-            # Execute the `before` step within the try block to ensure exception halt processing
-            if self.before is not None:
-                watch = Watch.load(**{**self.before, "match": "none"})
-                watch.process(ctx)
-                
-            data = self.fetch_data(ctx)
-            data = self.select_data(ctx, data)
-            action_trigger = self.match_data(ctx, data)
-        except:
-            raise
-        else:
-            # Clear any previous failure count
-            cache.put_entry(f"{self.hash}-failures", 0)
+        if not trigger:
+            return False, [], []
+        
+        # Store watch data in the context
+        if self.store is not None:
+            ctx.set_variable(self.store, data)
+        ctx.set_variable(self.hash, data)
+        
+        ctx.push_variable("data", data)
+        r = (trigger, self.get_comment(ctx), self.get_data(ctx))
+        ctx.pop_variable("data")
+        return r
 
-            if not action_trigger:
-                return False, [], []
+class MultipleWatch(Watch):
+    OPERATOR_ALL = ("all", "and")
+    OPERATOR_ANY = ("any", "or")
+    OPERATOR_LAST = "last"
 
-            # Store selected data in the context
-            ctx.set_variable(self.hash, data)
-            if self.store is not None:
-                ctx.set_variable(self.store, data)
-            ctx.push_variable("data", data)
-            
-            try:
-                return True, self.get_comment(ctx), self.get_data(ctx)
-            finally:
-                ctx.pop_variable("data")
-        finally:
-            # Execute the `after` step within the finally block to ensure it is always executed
-            if self.after is not None:
-                watch = Watch.load(**{**self.after, "match": "none"})
-                watch.process(ctx)
-            ctx.pop_variable("hash")
+    keys = {
+        "operator" : (type_choice(["all", "and", "any", "or", "last"], throw=True), "any")
+    }
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.watches = []
+
+    def gen(self, ctx: Context) -> Watch:
+        raise WatchException("Not Implemented")
+
+    def run(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
+        comment = []
+        data = []
+        trigger = False
+        _trigger = False
+
+        for watch in self.gen(ctx):
+            self.watches.append(watch)
+            _trigger, _comment, _data = watch.process(ctx)
+
+            if self.operator in MultipleWatch.OPERATOR_ALL:
+                if not _trigger:
+                    # Early exit on the ALL operator
+                    return False, [], []
+
+            trigger |= _trigger
+            if _trigger:
+                comment.extend(_comment)
+                data.extend(_data)
+
+        if self.operator == MultipleWatch.OPERATOR_LAST:
+            comment = [comment[-1]] if len(comment) else []
+            data = [data[-1]] if len(data) else []
+            trigger = _trigger
+        
+        if self.comment is not None:
+            comment = [*self.get_comment(ctx), comment]
+        return trigger, comment, data
 
 class UrlWatch(DataWatch):
     keys = {
@@ -193,7 +250,7 @@ class UrlWatch(DataWatch):
         "headers" : (dict, dict),
         "cookies" : (dict, dict),
         "data" : (str, None), 
-        "code" : (lambda x: x if x is None else int(x), 200),
+        "code" : (type_none_or_type(int), 200),
         "download" : (str, None)
     }
 
@@ -249,9 +306,9 @@ class CmdWatch(DataWatch):
         "sudo": (bool, False),
         "env": (dict, dict),
         "cwd": (str, "."),
-        "timeout" : (lambda x: x if x is None else int(x), 30),
-        "return_code" : (lambda x: x if x is None else int(x), 0),
-        "output" : (lambda x: x if x in ["stdout", "stderr", "both"] else "stdout", "stdout")
+        "timeout" : (type, 30),
+        "return_code" : (type_none_or_type(int), 0),
+        "output" : (type_choice(["stdout", "stderr", "both"], default="stdout"), "stdout")
     }
 
     def fetch_data(self, ctx: Context) -> typing.List[bytes]:
@@ -297,70 +354,6 @@ class CmdWatch(DataWatch):
         return [stdout]
 
 
-# Watches which overload `process`
-
-class MultipleWatch(Watch):
-    OPERATOR_ALL = ("all", "and")
-    OPERATOR_ANY = ("any", "or")
-    OPERATOR_LAST = "last"
-
-    keys = {
-        "operator" : "any"
-    }
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.watches = []
-
-    def gen(self, ctx: Context) -> Watch:
-        raise WatchException("Not Implemented")
-
-    def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
-        comment = []
-        data = []
-        trigger = False
-        _trigger = False
-
-        try:
-            # Execute the `before` step within the try block to ensure exception halt processing
-            if self.before is not None:
-                watch = Watch.load(**{**self.before, "match": "none"})
-                watch.process(ctx)
-                
-            for watch in self.gen(ctx):
-                self.watches.append(watch)
-                _trigger, _comment, _data = watch.process(ctx)
-
-                print(self.operator, _trigger, _comment, _data)
-                if self.operator in MultipleWatch.OPERATOR_ALL:
-                    if not _trigger:
-                        # Early exit on the ALL operator
-                        return False, [], []
-
-                trigger |= _trigger
-                if _trigger:
-                    comment.extend(_comment)
-                    data.extend(_data)
-        except:
-            raise
-        else:
-            if not trigger:
-                return False, [], []
-
-            if self.operator == MultipleWatch.OPERATOR_LAST:
-                comment = [comment[-1]] if len(comment) else []
-                data = [data[-1]] if len(data) else []
-                trigger = _trigger
-
-            if self.comment is not None:
-                comment = [*super().get_comment(ctx), comment]
-            return trigger, comment, data
-        finally:
-            # Execute the `after` step within the finally block to ensure it is always executed
-            if self.after is not None:
-                watch = Watch.load(**{**self.after, "match": "none"})
-                watch.process(ctx)
-
 class GroupWatch(MultipleWatch):
     default_key = "group"
     keys = {
@@ -389,8 +382,8 @@ class LoopWatch(MultipleWatch):
             for data in ctx.get_variable(loop.hash):
                 ctx.push_variable(getattr(self, "as"), data)
                 
-                # Load and fixup the template hash to ensure it is unique per variable set
                 watch = Watch.load(**self.do)
+                # Fixup the loop action hash to ensure it is unique per input
                 watch.update_hash({getattr(self, "as") : data})
                 yield watch
                 
@@ -398,7 +391,7 @@ class LoopWatch(MultipleWatch):
     
 class ConditionalWatch(MultipleWatch):
     keys = {
-        "conditional" : (lambda x: x if isinstance(x, list) else [x], []),
+        "conditional" : (type_list_of_type(dict), []),
         "operator" : (str, "and"), 
         "then" : (dict, dict)
     }
@@ -432,7 +425,7 @@ class OnceWatch(MultipleWatch):
 
 class TemplateWatch(MultipleWatch):
     keys = {
-        "template" : (lambda x: x if isinstance(x, list) else [x], []),
+        "template" : (type_list_of_type(str), []),
         "requires" : (list, list),
         "variables" : (dict, dict),
         "body" : (lambda x: x if isinstance(x, (dict, list)) else None, dict)
@@ -495,7 +488,6 @@ class TemplateWatch(MultipleWatch):
         if "requires" in template:
             for r in template["requires"]:
                 if not r in self.variables:
-                    print(template["requires"], list(self.variables))
                     raise WatchException(f"Template missing required varible '{r}'")
             
             # Remove the meta `requires` key, as it is not a key for the resulting watch

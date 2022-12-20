@@ -3,7 +3,7 @@ import json
 import os
 import requests
 
-from src.loadable import Loadable, type_choice
+from src.loadable import Loadable, type_choice, type_list_of_type
 from src.context import Context
 
 logger = logging.getLogger(__name__)
@@ -96,7 +96,7 @@ class RenderAction(Action):
     keys = {
         "name" : (str, None),
         "id" : (str, "id"),     # Name of the `id` field in the resulting json
-        "sort" : (list, False)
+        "sort" : (type_list_of_type(str), False)
     }
 
     def __init__(self, **kwargs):

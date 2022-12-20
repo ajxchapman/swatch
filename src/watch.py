@@ -363,7 +363,7 @@ class GroupWatch(MultipleWatch):
 
     def gen(self, ctx: Context) -> Watch:
         for x in self.group:
-            yield Watch.load(**x)
+            yield Watch.load(**x, version=self.version)
         
 
 class LoopWatch(MultipleWatch):
@@ -376,14 +376,14 @@ class LoopWatch(MultipleWatch):
     }
 
     def gen(self, ctx: Context) -> Watch:
-        loop = Watch.load(**{**self.loop, "version": self.version})
+        loop = Watch.load(**self.loop, version=self.version)
         trigger, _, _ = loop.process(ctx)
         
         if trigger:
             for data in ctx.get_variable(loop.hash):
                 ctx.push_variable(getattr(self, "as"), data)
                 
-                watch = Watch.load(**self.do)
+                watch = Watch.load(**self.do, version=self.version)
                 # Fixup the loop action hash to ensure it is unique per input
                 watch.update_hash({getattr(self, "as") : data})
                 yield watch
@@ -402,7 +402,7 @@ class ConditionalWatch(MultipleWatch):
         trigger, _, _ = condition.process(ctx)
         
         if trigger:
-            yield Watch.load(**{**self.then, "version": self.version})
+            yield Watch.load(**self.then, version=self.version)
 
 
 class OnceWatch(MultipleWatch):
@@ -411,7 +411,7 @@ class OnceWatch(MultipleWatch):
     }
 
     def gen(self, ctx: Context) -> Watch:
-        yield Watch.load(**self.once)
+        yield Watch.load(**self.once, version=self.version)
 
     def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
         cache = ctx.get_variable("cache")
@@ -496,7 +496,7 @@ class TemplateWatch(MultipleWatch):
         logger.debug(template)
 
         # Load and fixup the template hash to ensure it is unique per variable set
-        watch = Watch.load(**template)
+        watch = Watch.load(**template, version=self.version)
         watch.update_hash(self.variables)
         yield watch
     

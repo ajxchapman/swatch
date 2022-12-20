@@ -106,7 +106,7 @@ if __name__ == "__main__":
     template_files = set()
     watch_files = set()
     if config.get("templates") is not None:
-        template_glob = os.path.join(os.path.dirname(args.config), config.get("templates", "templates"), "**/*.y*ml")
+        template_glob = os.path.join(os.path.dirname(args.config), config.get("templates"), "**/*.y*ml")
         template_files = set(glob.glob(template_glob, recursive=True))
     for x in args.watches:
         if os.path.isfile(x):

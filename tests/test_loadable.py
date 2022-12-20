@@ -1,7 +1,6 @@
-import hashlib
 import unittest
 
-from src.loadable import Loadable
+from src.loadable import Loadable, LoadableException
 
 class Loadable1(Loadable):
     keys = {
@@ -28,6 +27,19 @@ class Hash(Loadable):
 
 class BaseHash(Hash):
     pass
+
+
+class TypeTest(Loadable):
+    keys = {
+        "before" : (str, "before")
+    }
+    type_determination_skip = ["before"]
+
+class SubTypeTest(TypeTest):
+    keys = {
+        "sub" : (str, "123")
+    }
+    
 
 class TestLoadable(unittest.TestCase):
     def test_1(self):
@@ -75,4 +87,22 @@ class TestLoadable(unittest.TestCase):
         self.assertEqual(o.value[1]["comment"], "comment")
         self.assertEqual(s.hash, o.hash)
 
+    def test_load_defined(self):
+        o = TypeTest.load(**{"type": "sub"})
+        self.assertEqual(o.__class__, SubTypeTest)
+        self.assertEqual(o.sub, "123")
         
+    def test_load_determined(self):
+        o = TypeTest.load(**{"sub" : "456"})
+        self.assertEqual(o.__class__, SubTypeTest)
+        self.assertEqual(o.sub, "456")
+
+    def test_gettype_determined_exception(self):
+        with self.assertRaises(LoadableException):
+            TypeTest.load(**{"after" : "789", "sub" : "456"})
+
+    def test_gettype_determined_skip(self):
+        o = TypeTest.load(**{"before" : "789", "sub" : "456"})
+        self.assertEqual(o.__class__, SubTypeTest)
+        self.assertEqual(o.sub, "456")
+        self.assertEqual(o.before, "789")

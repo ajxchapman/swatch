@@ -2,7 +2,7 @@ import unittest
 
 from src.cache import Cache
 from src.context import Context
-from src.loadable import Loadable
+from src.loadable import _classes as LoadableClasses
 from src.watch import Watch, WatchException
 
 class TestGroupWatch(unittest.TestCase):
@@ -105,9 +105,9 @@ class TestGroupWatch(unittest.TestCase):
             "match" : {"type" : "true"}
         }], before={"type": "count"})
 
-        initialCount = Loadable._Loadable__classes['watch_count'].class_count
+        initialCount = LoadableClasses['watch_count'].class_count
         w.process(self.ctx)
-        self.assertEqual(Loadable._Loadable__classes['watch_count'].class_count, initialCount + 1)
+        self.assertEqual(LoadableClasses['watch_count'].class_count, initialCount + 1)
 
     def test_before_list(self):
         w = Watch.load(group=[{
@@ -115,9 +115,9 @@ class TestGroupWatch(unittest.TestCase):
             "match" : {"type" : "true"}
         }], before=[{"type": "count"}, {"type": "count"}])
 
-        initialCount = Loadable._Loadable__classes['watch_count'].class_count
+        initialCount = LoadableClasses['watch_count'].class_count
         w.process(self.ctx)
-        self.assertEqual(Loadable._Loadable__classes['watch_count'].class_count, initialCount + 2)
+        self.assertEqual(LoadableClasses['watch_count'].class_count, initialCount + 2)
     
     def test_before_exception(self):
         w = Watch.load(group=[{
@@ -135,6 +135,6 @@ class TestGroupWatch(unittest.TestCase):
             "match" : {"type" : "true"}
         }], after={"type": "count"})
 
-        initialCount = Loadable._Loadable__classes['watch_count'].class_count
+        initialCount = LoadableClasses['watch_count'].class_count
         w.process(self.ctx)
-        self.assertEqual(Loadable._Loadable__classes['watch_count'].class_count, initialCount + 1)
+        self.assertEqual(LoadableClasses['watch_count'].class_count, initialCount + 1)

@@ -6,13 +6,13 @@ import types
 
 logger = logging.getLogger(__name__)
 
-RESERVED_KEYS = ["kwargs"]
+RESERVED_KEYS = ["kwargs", "type"]
 
 class LoadableException(Exception):
     pass
 
-def type_list_of_type(type):
-    def inner(arg):
+def type_list_of_type(type: typing.Type) -> typing.Callable[[typing.Any], typing.Any]:
+    def inner(arg: typing.Any):
         if not isinstance(arg, list):
             arg = [arg]
         
@@ -22,13 +22,13 @@ def type_list_of_type(type):
         return arg
     return inner
 
-def type_none_or_type(type):
-    def inner(arg):
+def type_none_or_type(type: typing.Type) -> typing.Callable[[typing.Any], typing.Any]:
+    def inner(arg: typing.Any):
         return arg if arg is None else type(arg)
     return inner
 
-def type_choice(options, default=None, throw=False):
-    def inner(arg):
+def type_choice(options: typing.List[typing.Any], default: typing.Any=None, throw: bool=False) -> typing.Callable[[typing.Any], typing.Any]:
+    def inner(arg: typing.Any):
         if arg in options:
             return arg
         
@@ -57,74 +57,81 @@ def hash_args(arg: object, hash: object=None, skip_keys: typing.List[bytes]=[]) 
 def all_subclasses(cls):
     return set(cls.__subclasses__()).union([s for c in cls.__subclasses__() for s in all_subclasses(c)])
 
-class Loadable:
-    __loadables = set()
-    __classes = {}
-    __class_keys = {}
+_loadables = set()
+_classes = {}
 
+class Loadable:
     @classmethod
     def get_type(cls, kwargs: dict) -> type[Loadable]:
-        ltype = None
-        if "type" in kwargs:
-            ltype =  kwargs["type"]
-        elif len(kwargs):
-            ltype = next(kwargs.keys().__iter__())
-
-        lctype = f"{cls.__name__}_{ltype}".lower()
-        return cls.__classes.get(lctype)
-
-    @classmethod
-    def load(cls, **kwargs) -> Loadable:
-        # Load default key values from the Loadable subclasses
-        if not cls.__name__ in cls.__loadables:
-            cls.__loadables.add(cls.__name__)
-
-            for c in all_subclasses(cls):
-                scls_name = (cls.__name__ + "_" + c.__name__.replace(cls.__name__, "")).lower()
-                cls.__classes[scls_name] = c
-
-                # Add the classname as a default key
-                cls.__class_keys[scls_name] = {
-                    c.__name__.replace(cls.__name__, "").lower(): (object, None)
-                }
-                for x in c.__mro__[::-1]:
-                    cls.__class_keys[scls_name] = {**cls.__class_keys.get(scls_name, {}), **getattr(x, "keys", {})}
-            
-            for k in cls.__class_keys.keys():
-                if k in RESERVED_KEYS:
-                    raise LoadableException(f"Loadable {cls.__name__} uses reserved key '{k}'")
-
         # Obtain the loadable type from the "type" kwarg or the first kwarg
         # Allows for definitions such as:
         #   - type: "regex"
         #     value: ".*"
         # Or
         #   - regex: ".*"
-        ltype = kwargs.get("type")
-        if ltype is not None:
-            lvalue = None
-            del kwargs["type"]
+        ltype = None
+        if "type" in kwargs:
+            ltype =  kwargs["type"]
         else:
-            ltype = next(kwargs.keys().__iter__())
-            lvalue = kwargs[ltype]
+            # If a `type` hint isnt provided, assume the type is in the first key that is not in the tope level class `type_determination_skip` list
+            for x in kwargs.keys():
+                if not x in getattr(cls, "type_determination_skip", []):
+                    ltype = x
+                    break
 
         lctype = f"{cls.__name__}_{ltype}".lower()
-        if not lctype in cls.__classes:
+        if not lctype in _classes:
             raise LoadableException(f"Unknown {cls.__name__} class {ltype}")
 
-        lcls = cls.__classes[lctype]
-        lcls_keys = cls.__class_keys[lctype]
+        return _classes.get(lctype)
 
-        logger.debug(f"Loading {cls.__name__} type {lctype}")
-        
-        # If the loadable defines a default key, set the "type" value to the default_key name
-        if lvalue is not None and hasattr(lcls, "default_key"):
-            del kwargs[ltype]
-            kwargs[lcls.default_key] = lvalue
+    @classmethod
+    def prepare(cls) -> None:
+        if not cls.__name__ in _loadables:
+            _loadables.add(cls.__name__)
+            cls.loadable_type = cls.__name__.lower()
+
+            for subcls in all_subclasses(cls):
+                subcls.loadable_name = subcls.__name__.replace(cls.__name__, "").lower()
+                subcls.loadable_type = f"{cls.loadable_type}_{subcls.loadable_name}"
+
+                _classes[subcls.loadable_type] = subcls
+
+                # Add the classname as a default key with a default type hint and value
+                subcls.loadable_keys = {
+                    subcls.loadable_name: (object, None)
+                }
+
+                # Traverse down the class inheritence stack merging any found `keys` dictionaries
+                for x in subcls.__mro__[::-1]:
+                    subcls.loadable_keys = {**subcls.loadable_keys, **getattr(x, "keys", {})}
+            
+                # Check no reserved names are used in the discovered class keys
+                for k in subcls.loadable_keys.keys():
+                    if k in RESERVED_KEYS:
+                        raise LoadableException(f"Loadable {cls.__name__} uses reserved key '{k}'")
+
+    @classmethod
+    def load(cls, **kwargs) -> Loadable:
+        cls.prepare()
+
+        # Discern the loadable type
+        loadable_cls = cls.get_type(kwargs)
+        logger.debug(f"Loading {cls.__name__} type {loadable_cls}")
+
+        # If the `type` hint was used in kwargs, remove it
+        if "type" in kwargs:
+            del kwargs["type"]
+
+        # If the loadable defines a default key, set the `loadable_name` value to the default_key name
+        default_value = kwargs.get(loadable_cls.loadable_name)
+        if default_value is not None and hasattr(loadable_cls, "default_key"):
+            del kwargs[loadable_cls.loadable_name]
+            kwargs[loadable_cls.default_key] = default_value
 
         # Initialise loadable kwargs
         lkwargs = {}
-        for k, v in lcls_keys.items():
+        for k, v in loadable_cls.loadable_keys.items():
             ktype, kdefault = v if isinstance(v, tuple) else (type(v), v)
             if k in kwargs:
                 # Cast as the correct type
@@ -154,8 +161,8 @@ class Loadable:
         # Assign remaining kwargs to a kwargs key
         lkwargs["kwargs"] = kwargs
         
-        lobj = lcls(**lkwargs)
-        lobj.hashobj = hash_args(lkwargs, skip_keys=getattr(lcls, "hash_skip", []))
+        lobj = loadable_cls(**lkwargs)
+        lobj.hashobj = hash_args(lkwargs, skip_keys=getattr(loadable_cls, "hash_skip", []))
         lobj.hash = lobj.hashobj.hexdigest()
         return lobj
 

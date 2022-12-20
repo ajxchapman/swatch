@@ -2,7 +2,7 @@ import unittest
 
 from src.cache import Cache
 from src.context import Context
-from src.loadable import Loadable
+from src.loadable import _classes as LoadableClasses
 from src.watch import Watch, TemplateWatch, WatchException
 
 templates = {
@@ -94,9 +94,9 @@ class TestTemplateWatch(unittest.TestCase):
     def test_loadable_class_template_precedence(self):
         t = TemplateWatch.render_template(self.ctx, ["render_static_class"], body={"count" : None})
         w = Watch.load(**t)
-        self.assertIsInstance(w, Loadable._Loadable__classes['watch_static'])
+        self.assertIsInstance(w, LoadableClasses['watch_static'])
     
     def test_loadable_class_body_precedence(self):
         t = TemplateWatch.render_template(self.ctx, ["render0"], body={"count" : None})
         w = Watch.load(**t)
-        self.assertIsInstance(w, Loadable._Loadable__classes['watch_count'])
+        self.assertIsInstance(w, LoadableClasses['watch_count'])

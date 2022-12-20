@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 from src.action import Action
 from src.context import Context
-from src.loadable import Loadable, type_none_or_type, type_list_of_type, type_choice
+from src.loadable import Loadable, LoadableException, type_none_or_type, type_list_of_type, type_choice
 from src.match import Match
 from src.selector import Selector
 
@@ -45,6 +45,7 @@ class Watch(Loadable):
         "version" : (str, "1") # For cache busting
     }
     hash_skip = ["comment"]
+    type_determination_skip = ["before"]
 
     def get_comment(self, ctx: Context) -> typing.List[str]:
         return [ctx.expand_context(self.comment)] if self.comment is not None else []
@@ -470,11 +471,11 @@ class TemplateWatch(MultipleWatch):
         replaced, template = cls.replace_body(template, body)
         # If a replacement `body:` key is not found in the template stack, attempt to identify the correct resulting watch type
         if not replaced:
-            template_type = Watch.get_type(template)
-            if template_type is not None:
+            try:
+                Watch.get_type(template)
                 # Assume that template specifies the subwatch type
                 template = {**template, **body}
-            else:
+            except LoadableException:
                 # Assume that body specifies the subwatch type
                 # Using order of body, apply template keys, then apply body keys
                 template = {**body, **template, **body}

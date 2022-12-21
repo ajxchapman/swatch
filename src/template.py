@@ -1,5 +1,6 @@
 import base64
 import json
+import time
 import typing
 
 from jinja2 import Environment, BaseLoader
@@ -37,7 +38,9 @@ def finalize(value: typing.Any) -> typing.Any:
 def template_render(template: str, *args, **kwargs) -> str:
     _template = init_env().from_string(template)
     
-    _args = {}
+    _args = {
+        "unixtime" : int(time.time())
+    }
     for x in args:
         _args.update(x)
     _args.update(kwargs)

@@ -35,16 +35,18 @@ class FileLogAction(LogAction):
     keys = {
         "file" : (str, "swatch.log")
     }
+    loggers = {}
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.file = os.path.split(self.file)[-1]
-        self.logger = None
 
-    def create_logger(self, ctx: Context) -> None:
+    def get_logger(self, ctx: Context) -> None:
+        logname = f"action.file.{self.file}"
+
         # Have to create the logger lazily, as we don't have access to the context in __init__
-        if self.logger is not None:
-            return
+        if logname in FileLogAction.loggers:
+            return FileLogAction.loggers.get(logname)
         
         log_path = os.path.join(ctx.get_variable("base_dir"), ctx.get_variable("config").get("data_path", "data"))
         os.makedirs(log_path, exist_ok=True)
@@ -53,22 +55,24 @@ class FileLogAction(LogAction):
         formatter = logging.Formatter("%(asctime)s %(levelname)8s %(name)s | %(message)s")
         handler.setFormatter(formatter)
 
-        self.logger = logging.getLogger("action.file")
-        self.logger.addHandler(handler)
-        self.logger.setLevel(logging.DEBUG)
-        self.logger.propagate = False
+        logger = logging.getLogger(logname)
+        logger.addHandler(handler)
+        logger.setLevel(logging.DEBUG)
+        logger.propagate = False
+        FileLogAction.loggers[logname] = logger
+        return logger
 
     def report(self, ctx: Context, data: dict) -> None:
-        self.create_logger(ctx)
+        logger = self.get_logger(ctx)
 
         for line in data.get("comment").splitlines():
-            getattr(self.logger, self.level)(line)
+            getattr(logger, self.level)(line)
     
     def error(self, ctx: Context, data: dict) -> None:
-        self.create_logger(ctx)
+        logger = self.get_logger(ctx)
         
         for line in data.get("error").splitlines():
-            getattr(self.logger, self.error_level)(line)
+            getattr(logger, self.error_level)(line)
 
 class SlackAction(Action):
     keys = {

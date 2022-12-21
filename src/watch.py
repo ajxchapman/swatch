@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 from src.action import Action
 from src.context import Context
-from src.loadable import Loadable, LoadableException, type_none_or_type, type_list_of_type, type_choice
+from src.loadable import Loadable, LoadableException, type_one_of, type_none_or_type, type_list_of_type, type_choice
 from src.match import Match
 from src.selector import Selector
 
@@ -156,9 +156,14 @@ class Watch(Loadable):
 class DataWatch(Watch):
     keys = {
         "store" : (str, None),
-        "selectors" : (list, list),
+        "selectors" : (type_list_of_type(dict), list),
         "match" : (lambda x: x if isinstance(x, dict) else {"type" : x}, {"type" : "cache"}),
     }
+    template_variables = []
+
+    def render_variables(self, ctx: Context) -> None:
+        for x in self.template_variables:
+            setattr(self, x, ctx.expand_context(getattr(self, x)))
 
     def fetch_data(self, ctx: Context) -> typing.List[bytes]:
         """
@@ -184,6 +189,7 @@ class DataWatch(Watch):
         return Match.load(**self.match).match(ctx, data)
 
     def run(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
+        self.render_variables(ctx)
         data = self.select_data(ctx, self.fetch_data(ctx))
         trigger = self.match_data(ctx, data)
 
@@ -254,6 +260,7 @@ class UrlWatch(DataWatch):
         "code" : (type_none_or_type(int), 200),
         "download" : (str, None)
     }
+    template_variables = ["url", "headers", "data", "cookies"]
 
     def get_comment(self, ctx: Context) -> typing.List[str]:
         try:
@@ -263,30 +270,25 @@ class UrlWatch(DataWatch):
             ctx.pop_variable("URL")
 
     def fetch_data(self, ctx: Context) -> typing.List[bytes]:
-        ex_url = ctx.expand_context(self.url)
-        ex_headers = ctx.expand_context(self.headers)
-        ex_data = ctx.expand_context(self.data)
-        ex_cookies = ctx.expand_context(self.cookies)
-        
         # Use a per-context session for URL watches
         s = ctx.get_variable("requests_session")
         if s is None:
             s = requests.session()
             ctx.set_variable("requests_session", s)
         
-        if len(ex_cookies) > 0:
-            domain = urlparse(ex_url).hostname
-            for k, v in ex_cookies.items():
+        if len(self.cookies) > 0:
+            domain = urlparse(self.url).hostname
+            for k, v in self.cookies.items():
                 s.cookies.set(k, v, domain=domain)
 
         r = s.request(
             self.method,
-            ex_url,
-            headers=ex_headers,
-            data=ex_data,
+            self.url,
+            headers=self.headers,
+            data=self.data,
             stream=True if self.download is not None else False)
         
-        logger.debug(f"UrlWatch: [{r.status_code} {r.reason}] {ex_url}")
+        logger.debug(f"UrlWatch: [{r.status_code} {r.reason}] {self.url}")
         if self.code is not None and r.status_code != self.code:
             raise WatchFetchException(f"Status code {r.status_code} != {self.code}")
         
@@ -307,20 +309,18 @@ class CmdWatch(DataWatch):
         "sudo": (bool, False),
         "env": (dict, dict),
         "cwd": (str, "."),
-        "timeout" : (type_none_or_type(int), 30),
-        "return_code" : (type_none_or_type(int), 0),
+        "timeout" : (type_one_of(int, str, None), 60),
+        "return_code" : (type_none_or_type(int), None),
         "output" : (type_choice(["stdout", "stderr", "both"], default="stdout"), "stdout")
     }
+    template_variables = ["cmd", "env", "cwd", "timeout"]
 
     def fetch_data(self, ctx: Context) -> typing.List[bytes]:
-        ex_cmd = ctx.expand_context(self.cmd)
-        ex_env = ctx.expand_context({**os.environ, **self.env})
-        ex_cwd = ctx.expand_context(self.cwd)
         shell = [self.shell]
         if self.sudo:
             shell = ["sudo"] + shell
 
-        logger.debug(f"CmdWatch: Executing command: {ex_cmd}")
+        logger.debug(f"CmdWatch: Executing command: {self.cmd}")
         try:
             p = subprocess.Popen(
                 shell, 
@@ -328,10 +328,10 @@ class CmdWatch(DataWatch):
                 stdin=subprocess.PIPE, 
                 stdout=subprocess.PIPE, 
                 stderr=subprocess.PIPE,
-                env=ex_env,
-                cwd=ex_cwd
+                env={**os.environ, **self.env},
+                cwd=self.cwd
             )
-            stdout, stderr = p.communicate(ex_cmd.encode(), timeout=self.timeout)
+            stdout, stderr = p.communicate(self.cmd.encode(), timeout=int(self.timeout) if self.timeout is not None else None)
         except subprocess.TimeoutExpired as e:
             if self.sudo:
                 subprocess.run(["sudo", "/bin/kill", "--", f"-{os.getpgid(p.pid)}"])

@@ -11,6 +11,14 @@ RESERVED_KEYS = ["kwargs", "type"]
 class LoadableException(Exception):
     pass
 
+def type_one_of(*types: typing.Type) -> typing.Callable[[typing.Any], typing.Any]:
+    def inner(arg: typing.Any):
+        if not isinstance(arg, tuple(types)):
+            raise LoadableException(f"Argument '{arg} is not one of type {types}")
+        return arg
+
+    return inner
+
 def type_list_of_type(type: typing.Type) -> typing.Callable[[typing.Any], typing.Any]:
     def inner(arg: typing.Any):
         if not isinstance(arg, list):

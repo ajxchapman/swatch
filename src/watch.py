@@ -148,6 +148,7 @@ class Watch(Loadable):
                   "comment": render_comment(comment),
                   "data" : data
                 }
+
                 for action in actions:
                     action.report(ctx, action_data)
             else:
@@ -177,6 +178,7 @@ class DataWatch(Watch):
         """
         for selector_kwargs in self.selectors:
             data = Selector.load(**selector_kwargs).run_all(ctx, data)
+            logger.debug("Selector output:\n\t" + b'\n\t'.join(data).decode())
         return data
 
     def match_data(self, ctx: Context, data: typing.List[bytes]) -> bool:

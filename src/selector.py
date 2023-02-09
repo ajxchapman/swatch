@@ -40,6 +40,12 @@ class RegexSelector(Selector):
         m = re.search(self.regex.encode(), data)
         if m is None:
             return [b'']
+        
+        # Return as a json dictionary if named groups are used
+        if m.groupdict():
+            return [json.dumps({k: v.decode() for k, v in m.groupdict().items()}).encode()]
+
+        # Otherwise return as a list
         if len(m.groups()) == 0:
             return [m.group()]
         return list(m.groups())
@@ -96,6 +102,10 @@ class StripSelector(Selector):
 
     def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
         return [data.strip(self.chars.encode())]
+
+class StripTagsSelector(Selector):
+    def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
+        return [re.sub(b'<[^>]+>', b'', data)]
 
 class ReplaceSelector(Selector):
     default_key = "regex"

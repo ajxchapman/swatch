@@ -121,7 +121,7 @@ if __name__ == "__main__":
     if args.find:
         find(watch_files, args.find)
     elif args.test:
-        process(config, Cache(cache_path=None), watch_files)
+        process(config, Cache(cache_path=None), watch_files, template_files)
     else:
         cache = Cache(cache_path=args.cache, encryption_key=config.get("key"))
         try:

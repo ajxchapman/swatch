@@ -35,6 +35,8 @@ def process(config: dict, cache: Cache, watch_files: typing.List[str], template_
     for watch_file in watch_files:
         with open(watch_file) as f:
             watch_config = yaml.safe_load(f)
+        if watch_config is None:
+            continue
         
         ctx = Context()
         ctx.set_variable("config", config)

@@ -67,3 +67,23 @@ class TestConditionalWatch(unittest.TestCase):
         trigger, _, _ = w.process(self.ctx)
         self.assertEqual(trigger, False)
         self.assertEqual(len(w.watches), 0)
+
+    def test_else_success(self):
+        w = Watch.load(**{
+            "conditional" : {
+                "type": "count",
+                "match" : {"type" : "false"}
+            }, 
+            "then" : {
+                "type": "count",
+                "match" : {"type" : "true"}
+            }, 
+            "else" : {
+                "type" : "true"
+            }
+        })
+        
+        trigger, _, _ = w.process(self.ctx)
+        self.assertEqual(trigger, True)
+        # self.assertEqual(len(w.watches), 1)
+        # self.assertEqual(w.watches[0].count, 1)

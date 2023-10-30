@@ -1,11 +1,14 @@
 import hashlib
+import logging
 import re
 import typing
 
-from src.loadable import Loadable
+from src.loadable import Loadable, type_none_or_type
 from src.context import Context
 from src.cache import Cache
 from src.template import template_render
+
+logger = logging.getLogger(__name__)
 
 class MatchException(Exception):
     pass
@@ -20,25 +23,26 @@ class CacheMatch(Match):
     """
 
     keys = {
+        "key" : (type_none_or_type(str), None),
         "empty" : (bool, False) # Consider an empty data array
     }
+    default_key = "key"
 
     def match(self, ctx: Context, data: typing.List[bytes]) -> bool:
         if not self.empty:
             if len(data) == 0:
+                logger.debug(f"CacheMatch: Empty data, returning False")
                 return False
 
         cache: Cache = ctx.get_variable("cache")
 
-        key_digest = ctx.get_variable("hash")
-        data_digest = hashlib.sha256()
-        for datum in data:
-            data_digest.update(datum)
-        data_digest = data_digest.hexdigest()
-
-        if cache.get_entry(key_digest) != data_digest:
-            cache.put_entry(key_digest, data_digest)
+        hash_key = ctx.expand_context(self.key) if self.key is not None else f"{self.hash}-match"
+        logger.debug(f"{self.__class__.__name__}: cache key {hash_key}")
+        if not cache.has_entry(hash_key):
+            cache.put_entry(hash_key, True)
+            logger.debug(f"CacheMatch: Cache miss, returning True")
             return True
+        logger.debug(f"CacheMatch: Cache hit, returning False")
         return False
 
 class CondMatch(Match):
@@ -65,6 +69,10 @@ class CondMatch(Match):
     def match(self, ctx: Context, data: typing.List[bytes]) -> bool:
         c1 = template_render(self.comparitor, ctx, data=data)
         c2 = template_render(self.value, ctx, data=data)
+
+        logger.debug(f"CondMatch: {self.comparitor} {self.operator} {self.value}")
+        logger.debug(f"CondMatch: {c1} {self.operator} {c2}")
+        logger.debug(ctx.frames)
 
         if self.operator not in ["eq", "neq"]:
             try:

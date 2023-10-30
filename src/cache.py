@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import json
 import os
 import re
@@ -64,11 +65,10 @@ class Cache:
 
 
     def get_file(self, key: str) -> typing.List[bytes]:
-        if not re.match(KEY_EXPR, key):
-            raise CacheException(f"Invalid cache key: '{key}'")
+        key_hash = hashlib.sha256(key.encode()).hexdigest()
 
-        if os.path.isfile(os.path.join(self.cache_dir, key)):
-            with open(os.path.join(self.cache_dir, key), "rb") as f:
+        if os.path.isfile(os.path.join(self.cache_dir, key_hash)):
+            with open(os.path.join(self.cache_dir, key_hash), "rb") as f:
                 data = f.read()
                 if self.encryptor is not None:
                     data = self.encryptor.decrypt(data)
@@ -76,23 +76,22 @@ class Cache:
         return []
 
     def put_file(self, key: str, data: typing.List[bytes]) -> None:
-        if not re.match(KEY_EXPR, key):
-            raise CacheException(f"Invalid cache key: '{key}'")
+        key_hash = hashlib.sha256(key.encode()).hexdigest()
         
-        with open(os.path.join(self.cache_dir, key), "wb") as f:
+        with open(os.path.join(self.cache_dir, key_hash), "wb") as f:
             _data = json.dumps(data, default=json_encode).encode()
             if self.encryptor is not None:
                 _data = self.encryptor.encrypt(_data)
             f.write(_data)
 
+    def has_entry(self, key: str) -> bool:
+        key_hash = hashlib.sha256(key.encode()).hexdigest()
+        return key_hash in self.cache
+
     def get_entry(self, key: str) -> typing.Any:
-        if not re.match(KEY_EXPR, key):
-            raise CacheException(f"Invalid cache key: '{key}'")
-        
-        return self.cache.get(key)
+        key_hash = hashlib.sha256(key.encode()).hexdigest()
+        return self.cache.get(key_hash)
     
     def put_entry(self, key: str, data: typing.Any) -> None:
-        if not re.match(KEY_EXPR, key):
-            raise CacheException(f"Invalid cache key: '{key}'")
-
-        self.cache[key] = data
+        key_hash = hashlib.sha256(key.encode()).hexdigest()
+        self.cache[key_hash] = data

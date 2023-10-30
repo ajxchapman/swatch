@@ -69,15 +69,19 @@ class Watch(Loadable):
         Entrypoint into an individual (potentially nested) watch.
         Returns a tuple of (action_trigger, action_comment, action_data) with `action_trigger` True if the action_data of the Watch should be reported, False otherwise
         """
+        logger.debug(f"{self.__class__.__name__}: process enter")
         cache = ctx.get_variable("cache")
         # Set the last run time
         cache.put_entry(f"{self.hash}-executed", ctx.get_variable("starttime"))
+
+        # Push a new frame into the context
+        ctx.push_frame(self.hash)
         ctx.push_variable("hash", self.hash)
 
         try:
             # Execute the `before` step within the try block to ensure exception halt processing
             for watch in self.before:
-                watch = Watch.load(**{**watch, "match": "none"})
+                watch = Watch.load(**{**watch, "match": None})
                 watch.process(ctx)
             
             trigger, comment, data = self.run(ctx)
@@ -95,17 +99,20 @@ class Watch(Loadable):
             
             # Record the last triggered time
             cache.put_entry(f"{self.hash}-triggered", ctx.get_variable("starttime"))
+            logger.debug(f"{self.__class__.__name__}: process exit triggered {trigger}")
             return trigger, comment, data
         finally:
             # Execute the `after` step within the finally block to ensure it is always executed
             # Ignore exceptions thrown by the `after` block
             try:
                for watch in self.after:
-                    watch = Watch.load(**{**watch, "match": "none"})
+                    watch = Watch.load(**{**watch, "match": None})
                     watch.process(ctx)
             except Exception as e:
                 logger.debug(e, exc_info=1)
-            ctx.pop_variable("hash")
+            
+            # Pop the frame from the context clearing all context variables
+            ctx.pop_frame(self.hash)
 
     def execute(self, ctx: Context) -> None:
         """
@@ -158,7 +165,7 @@ class DataWatch(Watch):
     keys = {
         "store" : (str, None),
         "selectors" : (type_list_of_type(dict), list),
-        "match" : (lambda x: x if isinstance(x, dict) else {"type" : x}, {"type" : "cache"}),
+        "match" : (lambda x: x if isinstance(x, dict) else {"type" : x}, None),
     }
     template_variables = []
 
@@ -178,14 +185,17 @@ class DataWatch(Watch):
         """
         for selector_kwargs in self.selectors:
             data = Selector.load(**selector_kwargs).run_all(ctx, data)
-            logger.debug("Selector output:\n\t" + b'\n\t'.join(data).decode())
+            logger.debug(f"{self.__class__.__name__}: Selector output:" + (("\n\t" + b'\n\t'.join(data).decode()) if len(data) else " <empty>"))
         return data
 
     def match_data(self, ctx: Context, data: typing.List[bytes]) -> bool:
         """
         Return a boolean indicating whether the processed data matches the configured match
         """
+        # By default match on any data, reject no data
         if self.match is None:
+            if len(data) == 0:
+                return False
             return True
 
         return Match.load(**self.match).match(ctx, data)
@@ -193,25 +203,51 @@ class DataWatch(Watch):
     def run(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
         self.render_variables(ctx)
         data = self.select_data(ctx, self.fetch_data(ctx))
-        trigger = self.match_data(ctx, data)
-
-        if not trigger:
-            return False, [], []
         
         # Store watch data in the context
         if self.store is not None:
             ctx.set_variable(self.store, data)
         ctx.set_variable(self.hash, data)
-        
         ctx.push_variable("data", data)
-        r = (trigger, self.get_comment(ctx), self.get_data(ctx))
+
+        r = (False, [], [])
+        if self.match_data(ctx, data):
+            r = (True, self.get_comment(ctx), self.get_data(ctx))
+        
         ctx.pop_variable("data")
         return r
+
+class GeneratorWatch(DataWatch):
+    pass
+
+class TrueWatch(GeneratorWatch):
+    def fetch_data(self, ctx: Context) -> typing.Iterable[bytes]:
+        return [b'1']
+
+class RangeWatch(GeneratorWatch):
+    default_key = "to"
+    keys = {
+        "from" : (int, 0),
+        "to" : (int, 0),
+        "step" : (int, 1),
+    }
+
+    def fetch_data(self, _: Context) -> typing.Iterable[bytes]:
+        return [str(x).encode() for x in range(getattr(self, "from"), self.to, self.step)]
+    
+class InfinateWatch(GeneratorWatch):
+    def gen(self):
+        while True:
+            yield b'1'
+    
+    def fetch_data(self, _: Context) -> typing.Iterable[bytes]:
+        return self.gen()
 
 class MultipleWatch(Watch):
     OPERATOR_ALL = ("all", "and")
     OPERATOR_ANY = ("any", "or")
     OPERATOR_LAST = "last"
+    OPERATOR_BREAK = "break"
 
     keys = {
         "operator" : (type_choice(["all", "and", "any", "or", "last"], throw=True), "any")
@@ -219,6 +255,7 @@ class MultipleWatch(Watch):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        # Note: This is used solely for testing, there is probably a better way of doing this
         self.watches = []
 
     def gen(self, ctx: Context) -> Watch:
@@ -230,6 +267,7 @@ class MultipleWatch(Watch):
         trigger = False
         _trigger = False
 
+        logger.debug(f"{self.__class__.__name__}: run enter")
         for watch in self.gen(ctx):
             self.watches.append(watch)
             _trigger, _comment, _data = watch.process(ctx)
@@ -238,11 +276,15 @@ class MultipleWatch(Watch):
                 if not _trigger:
                     # Early exit on the ALL operator
                     return False, [], []
-
+            
             trigger |= _trigger
             if _trigger:
                 comment.extend(_comment)
                 data.extend(_data)
+            else:
+                if self.operator == MultipleWatch.OPERATOR_BREAK:
+                    logger.debug(f"{self.__class__.__name__}: run break")
+                    break
 
         if self.operator == MultipleWatch.OPERATOR_LAST:
             comment = [comment[-1]] if len(comment) else []
@@ -251,27 +293,25 @@ class MultipleWatch(Watch):
         
         if self.comment is not None:
             comment = [*self.get_comment(ctx), comment]
+
+        logger.debug(f"{self.__class__.__name__}: run exit triggered {trigger}")
         return trigger, comment, data
 
 class UrlWatch(DataWatch):
     keys = {
+        # "url" : str,
         "method" : (str, "GET"),
         "headers" : (dict, dict),
         "cookies" : (dict, dict),
-        "data" : (str, None), 
-        "code" : (type_none_or_type(int), 200),
-        "download" : (str, None)
+        "body" : (type_none_or_type(str), None), 
+        "code" : (type_none_or_type(int), None),
+        "download" : (type_none_or_type(str), None)
     }
-    template_variables = ["url", "headers", "data", "cookies"]
-
-    def get_comment(self, ctx: Context) -> typing.List[str]:
-        try:
-            ctx.push_variable("URL", self.url)
-            return super().get_comment(ctx)
-        finally:
-            ctx.pop_variable("URL")
+    template_variables = ["url", "headers", "body", "cookies"]
 
     def fetch_data(self, ctx: Context) -> typing.List[bytes]:
+        ctx.push_variable("URL", self.url)
+
         # Use a per-context session for URL watches
         s = ctx.get_variable("requests_session")
         if s is None:
@@ -287,13 +327,15 @@ class UrlWatch(DataWatch):
             self.method,
             self.url,
             headers=self.headers,
-            data=self.data,
+            data=self.body,
             stream=True if self.download is not None else False)
         
         logger.debug(f"UrlWatch: [{r.status_code} {r.reason}] {self.url}")
         if self.code is not None and r.status_code != self.code:
             raise WatchFetchException(f"Status code {r.status_code} != {self.code}")
         
+        ctx.push_variable("status_code", r.status_code)
+
         if self.download is not None:
             location = os.path.abspath(os.path.join(os.getcwd(), self.download))
             if not location.startswith(os.getcwd() + "/"):
@@ -304,6 +346,7 @@ class UrlWatch(DataWatch):
             return [location.encode()]
         
         return [r.content]
+    
 
 class CmdWatch(DataWatch):
     keys = {
@@ -342,13 +385,14 @@ class CmdWatch(DataWatch):
             raise WatchFetchException(f"CmdWatch: Command timeout after {self.timeout} seconds") from e
 
         logger.debug(f"CmdWatch: Return code: {p.returncode}")
-        _stdout = "\n\t" + "\n\t".join(stdout.decode().splitlines()) if len(stdout) else ""
-        _stderr = "\n\t" + "\n\t".join(stderr.decode().splitlines()) if len(stderr) else ""
+        _stdout = ("\n\t" + "\n\t".join(stdout.decode().splitlines()) if len(stdout) else "").strip()
+        if len(_stdout):
+            logger.debug(f"CmdWatch: Stdout: {_stdout}")
+        _stderr = ("\n\t" + "\n\t".join(stderr.decode().splitlines()) if len(stderr) else "").strip()
+        if len(_stderr):
+            logger.debug(f"CmdWatch: Stderr: {_stderr}")
         if self.return_code is not None and p.returncode != self.return_code:
             raise WatchFetchException(f"CmdWatch: Return code {p.returncode} != {self.return_code}\nStdout:{_stdout}\nStderr:{_stderr}")
-
-        logger.debug(f"CmdWatch: Stdout: {_stdout}")
-        logger.debug(f"CmdWatch: Stderr: {_stderr}")
 
         if self.output == "stderr":
             return [stderr]
@@ -358,7 +402,6 @@ class CmdWatch(DataWatch):
 
 
 class GroupWatch(MultipleWatch):
-    default_key = "group"
     keys = {
         "group" : (list, list)
     }
@@ -367,9 +410,7 @@ class GroupWatch(MultipleWatch):
         for x in self.group:
             yield Watch.load(**x, version=self.version)
         
-
 class LoopWatch(MultipleWatch):
-    default_key = "loop"
     keys = {
         "loop" : (dict, dict),
         "do" : (dict, dict),
@@ -382,21 +423,24 @@ class LoopWatch(MultipleWatch):
         trigger, _, _ = loop.process(ctx)
         
         if trigger:
-            for data in ctx.get_variable(loop.hash):
+            for index, data in enumerate(ctx.get_variable(loop.hash)):
+                ctx.push_variable("index", index)
                 ctx.push_variable(getattr(self, "as"), data)
-                
+
                 watch = Watch.load(**self.do, version=self.version)
                 # Fixup the loop action hash to ensure it is unique per input
                 watch.update_hash({getattr(self, "as") : data})
                 yield watch
                 
+                ctx.pop_variable("index")
                 ctx.pop_variable(getattr(self, "as"))
     
 class ConditionalWatch(MultipleWatch):
     keys = {
         "conditional" : (type_list_of_type(dict), []),
         "operator" : (str, "and"), 
-        "then" : (dict, dict)
+        "then" : (dict, dict),
+        "else" : (type_none_or_type(dict), None),
     }
 
     def gen(self, ctx: Context) -> Watch:
@@ -405,11 +449,14 @@ class ConditionalWatch(MultipleWatch):
         
         if trigger:
             yield Watch.load(**self.then, version=self.version)
+        elif getattr(self, "else") is not None:
+            yield Watch.load(**getattr(self, "else"), version=self.version)
 
 
 class OnceWatch(MultipleWatch):
     keys = {
-        "once" : (dict, dict)
+        "once" : (dict, dict),
+        "key" : (type_none_or_type(str), None)
     }
 
     def gen(self, ctx: Context) -> Watch:
@@ -417,13 +464,16 @@ class OnceWatch(MultipleWatch):
 
     def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
         cache = ctx.get_variable("cache")
-        if cache.get_entry(f"{self.hash}-once") is not None:
+        
+        hash_key = ctx.expand_context(self.key) if self.key is not None else f"{self.hash}-once"
+        logger.debug(f"{self.__class__.__name__}: cache key {hash_key}")
+        if cache.has_entry(hash_key):
             return False, [], []
 
         trigger, comment, data = super().process(ctx)
 
         if trigger:
-            cache.put_entry(f"{self.hash}-once", True)
+            cache.put_entry(hash_key, True)
         return trigger, comment, data
 
 class TemplateWatch(MultipleWatch):

@@ -1,5 +1,5 @@
-import hashlib
 import json
+import logging
 import re
 import typing
 
@@ -8,7 +8,9 @@ from bs4 import BeautifulSoup
 
 from src.cache import Cache
 from src.context import Context
-from src.loadable import Loadable
+from src.loadable import Loadable, type_none_or_type
+
+logger = logging.getLogger(__name__)
 
 class SelectorException(Exception):
     pass
@@ -39,7 +41,7 @@ class RegexSelector(Selector):
     def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
         m = re.search(self.regex.encode(), data)
         if m is None:
-            return [b'']
+            return []
         
         # Return as a json dictionary if named groups are used
         if m.groupdict():
@@ -128,9 +130,18 @@ class SliceSelector(Selector):
         return data[self.start:self.end]
 
 class NewSelector(Selector):
+    default_key = "key"
+    keys = {
+        "key" : (type_none_or_type(str), None),
+    }
+
     def run_all(self, ctx: Context, data:typing.List[bytes]) -> typing.List[bytes]:
         cache: Cache = ctx.get_variable("cache")
-        old_set = set(cache.get_file(ctx.get_variable("hash")))
+
+        hash_key = ctx.expand_context(self.key) if self.key is not None else f"{self.hash}-selector-new"
+        logger.debug(f"{self.__class__.__name__}: cache key {hash_key}")
+
+        old_set = set(cache.get_file(hash_key))
 
         # Iterate instead of `difference` to preserve order
         new_entries = []
@@ -138,5 +149,5 @@ class NewSelector(Selector):
             if not datum in old_set:
                 new_entries.append(datum)
         
-        cache.put_file(ctx.get_variable("hash"), list(old_set.union(new_entries)))
+        cache.put_file(hash_key, list(old_set.union(new_entries)))
         return new_entries

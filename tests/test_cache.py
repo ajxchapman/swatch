@@ -1,3 +1,4 @@
+import hashlib
 import os
 import random
 import unittest
@@ -25,7 +26,7 @@ class TestCache(unittest.TestCase):
         self.assertEqual(self.cache.get_file("filekey"), b'data')
 
     def test_file_encryption(self):
-        with open(os.path.join(self.cache.cache_dir, "filekey"), "rb") as f:
+        with open(os.path.join(self.cache.cache_dir, hashlib.sha256("filekey".encode()).hexdigest()), "rb") as f:
             data = f.read()
         
         self.assertEqual(self.cache.get_file("filekey"), b'data')

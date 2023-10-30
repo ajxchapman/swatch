@@ -140,6 +140,7 @@ class Loadable:
         # Initialise loadable kwargs
         lkwargs = {}
         for k, v in loadable_cls.loadable_keys.items():
+            # TODO: Required vars
             ktype, kdefault = v if isinstance(v, tuple) else (type(v), v)
             if k in kwargs:
                 # Cast as the correct type

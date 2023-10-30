@@ -185,7 +185,14 @@ class DataWatch(Watch):
         """
         for selector_kwargs in self.selectors:
             data = Selector.load(**selector_kwargs).run_all(ctx, data)
-            logger.debug(f"{self.__class__.__name__}: Selector output:" + (("\n\t" + b'\n\t'.join(data).decode()) if len(data) else " <empty>"))
+
+            _data = "<empty>"
+            if len(data):
+                try:
+                    _data = "\n\t" + b'\n\t'.join(data).decode()
+                except UnicodeDecodeError:
+                    _data = "\n\t" + repr(data)
+            logger.debug(f"{self.__class__.__name__}: Selector output: {_data}")
         return data
 
     def match_data(self, ctx: Context, data: typing.List[bytes]) -> bool:
@@ -305,7 +312,8 @@ class UrlWatch(DataWatch):
         "cookies" : (dict, dict),
         "body" : (type_none_or_type(str), None), 
         "code" : (type_none_or_type(int), None),
-        "download" : (type_none_or_type(str), None)
+        "download" : (type_none_or_type(str), None),
+        "verify" : (bool, True)
     }
     template_variables = ["url", "headers", "body", "cookies"]
 
@@ -328,7 +336,8 @@ class UrlWatch(DataWatch):
             self.url,
             headers=self.headers,
             data=self.body,
-            stream=True if self.download is not None else False)
+            stream=True if self.download is not None else False,
+            verify=self.verify)
         
         logger.debug(f"UrlWatch: [{r.status_code} {r.reason}] {self.url}")
         if self.code is not None and r.status_code != self.code:

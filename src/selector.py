@@ -1,3 +1,4 @@
+import html
 import json
 import logging
 import re
@@ -63,10 +64,27 @@ class JqSelector(Selector):
                 output_lines.append(json.dumps(line).encode())
         return output_lines
 
-class CssSelector(Selector):
+class HTMLSelector(Selector):
     def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
         soup = BeautifulSoup(data, "html.parser")
         return [str(x).encode() for x in soup.select(self.value)]
+
+class XmlSelector(Selector):
+    def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
+        soup = BeautifulSoup(data, "lxml-xml")
+        return [str(x).encode() for x in soup.select(self.value)]
+
+class DecodeSelector(Selector):
+    default_key = "encoding"
+    keys = {
+        "encoding" : (str, str)
+    }
+    ENCODING_HTML = "html"
+
+    def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
+        if self.encoding == self.ENCODING_HTML:
+            return [html.unescape(data.decode()).encode()]
+        raise Exception(f"Unknown encoding {self.encoding}")
 
 class BytesSelector(Selector):
     default_key = "end"

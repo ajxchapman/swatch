@@ -2,5 +2,6 @@ requests
 pyyaml
 jq
 beautifulsoup4
+lxml
 jinja2
 cryptography

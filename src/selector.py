@@ -1,3 +1,4 @@
+import hashlib
 import html
 import json
 import logging
@@ -169,3 +170,29 @@ class NewSelector(Selector):
         
         cache.put_file(hash_key, list(old_set.union(new_entries)))
         return new_entries
+    
+class SinceSelector(Selector):
+    default_key = "key"
+    keys = {
+        "key" : (type_none_or_type(str), None),
+    }
+
+    def run_all(self, ctx: Context, data:typing.List[bytes]) -> typing.List[bytes]:
+        cache: Cache = ctx.get_variable("cache")
+
+        hash_key = ctx.expand_context(self.key) if self.key is not None else f"{self.hash}-selector-since"
+        logger.debug(f"{self.__class__.__name__}: cache key {hash_key}")
+
+        index = None
+        since = cache.get_entry(hash_key)
+        if since is not None:
+            for i, datum in enumerate(data):
+                if hashlib.sha256(datum).hexdigest() == since:
+                    index = i
+                    break
+        
+        _data = data[:index]
+        if len(_data) > 0:
+            cache.put_entry(hash_key, hashlib.sha256(_data[0]).hexdigest())
+        return _data
+

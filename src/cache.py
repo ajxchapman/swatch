@@ -88,9 +88,9 @@ class Cache:
         key_hash = hashlib.sha256(key.encode()).hexdigest()
         return key_hash in self.cache
 
-    def get_entry(self, key: str) -> typing.Any:
+    def get_entry(self, key: str, default: typing.Any=None) -> typing.Any:
         key_hash = hashlib.sha256(key.encode()).hexdigest()
-        return self.cache.get(key_hash)
+        return self.cache.get(key_hash, default)
     
     def put_entry(self, key: str, data: typing.Any) -> None:
         key_hash = hashlib.sha256(key.encode()).hexdigest()

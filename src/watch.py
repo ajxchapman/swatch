@@ -324,10 +324,13 @@ class UrlWatch(DataWatch):
             for k, v in self.cookies.items():
                 s.cookies.set(k, v, domain=domain)
 
+        # Filter empty header values
+        headers = {k : str(v).strip() for k, v in self.headers.items() if v is not None and len(str(v).strip()) > 0}
+
         r = s.request(
             self.method,
             self.url,
-            headers=self.headers,
+            headers=headers,
             data=self.body,
             stream=True if self.download is not None else False,
             verify=self.verify)

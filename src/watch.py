@@ -42,7 +42,6 @@ class Watch(Loadable):
         "after" : (type_list_of_type(dict), []),
         "action_data" : (dict, None),
         "actions" : (list, list),
-        "version" : (str, "1") # For cache busting
     }
     hash_skip = ["comment"]
     type_determination_skip = ["before"]
@@ -224,12 +223,15 @@ class DataWatch(Watch):
         ctx.pop_variable("data")
         return r
 
+class TrueWatch(DataWatch):
+    def match_data(self, ctx: Context, data: typing.List[bytes]) -> bool:
+        return True
+    
+    def fetch_data(self, ctx: Context) -> typing.Iterable[bytes]:
+        return []
+
 class GeneratorWatch(DataWatch):
     pass
-
-class TrueWatch(GeneratorWatch):
-    def fetch_data(self, ctx: Context) -> typing.Iterable[bytes]:
-        return [b'1']
 
 class RangeWatch(GeneratorWatch):
     default_key = "to"
@@ -417,7 +419,7 @@ class GroupWatch(MultipleWatch):
 
     def gen(self, ctx: Context) -> Watch:
         for x in self.group:
-            yield Watch.load(**x, version=self.version)
+            yield Watch.load(**x)
         
 class LoopWatch(MultipleWatch):
     keys = {
@@ -428,7 +430,7 @@ class LoopWatch(MultipleWatch):
     }
 
     def gen(self, ctx: Context) -> Watch:
-        loop = Watch.load(**self.loop, version=self.version)
+        loop = Watch.load(**self.loop)
         trigger, _, _ = loop.process(ctx)
         
         if trigger:
@@ -436,7 +438,7 @@ class LoopWatch(MultipleWatch):
                 ctx.push_variable("index", index)
                 ctx.push_variable(getattr(self, "as"), data)
 
-                watch = Watch.load(**self.do, version=self.version)
+                watch = Watch.load(**self.do)
                 # Fixup the loop action hash to ensure it is unique per input
                 watch.update_hash({getattr(self, "as") : data})
                 yield watch
@@ -453,13 +455,13 @@ class ConditionalWatch(MultipleWatch):
     }
 
     def gen(self, ctx: Context) -> Watch:
-        condition = Watch.load(group=self.conditional, operator=self.operator, version=self.version)
+        condition = Watch.load(group=self.conditional, operator=self.operator)
         trigger, _, _ = condition.process(ctx)
         
         if trigger:
-            yield Watch.load(**self.then, version=self.version)
+            yield Watch.load(**self.then)
         elif getattr(self, "else") is not None:
-            yield Watch.load(**getattr(self, "else"), version=self.version)
+            yield Watch.load(**getattr(self, "else"))
 
 
 class OnceWatch(MultipleWatch):
@@ -469,7 +471,7 @@ class OnceWatch(MultipleWatch):
     }
 
     def gen(self, ctx: Context) -> Watch:
-        yield Watch.load(**self.once, version=self.version)
+        yield Watch.load(**self.once)
 
     def process(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
         cache = ctx.get_variable("cache")
@@ -557,7 +559,7 @@ class TemplateWatch(MultipleWatch):
         logger.debug(template)
 
         # Load and fixup the template hash to ensure it is unique per variable set
-        watch = Watch.load(**template, version=self.version)
+        watch = Watch.load(**template)
         watch.update_hash(self.variables)
         yield watch
     

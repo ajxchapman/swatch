@@ -1,3 +1,4 @@
+from __future__ import annotations
 import hashlib
 import html
 import json
@@ -20,19 +21,43 @@ class SelectorException(Exception):
 class Selector(Loadable):
     default_key = "value"
     keys = {
-        "value" : (str, None)
+        "value" : (type_none_or_type(str), None),
+        "input" : (type_none_or_type(str), None),
+        "store" : (type_none_or_type(str), None)
     }
+
+    def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
+        raise Exception("Not Implemented")
 
     def run_all(self, ctx: Context, data:typing.List[bytes]) -> typing.List[bytes]:
         # Run the modifier over each datum, and flatpack the result
-        outdata = []
+        _data = []
         for datum in data:
             result = self.run(ctx, datum)
-            outdata.extend([x for x in result if x is not None and len(x) > 0])
-        return outdata
+            _data.extend([x for x in result if x is not None and len(x) > 0])
+        return _data
     
-    def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
-        raise Exception("Not Implemented")
+    def execute(self, ctx: Context, data:typing.List[bytes]) -> typing.List[bytes]:
+        _data = data
+        if self.input is not None:
+            _data = ctx.get_variable(self.input)
+            if not isinstance(_data, list):
+                _data = [_data]
+
+        result = self.run_all(ctx, _data)
+        _result = "<empty>"
+        if len(result):
+            try:
+                _result = "\n\t" + b'\n\t'.join(result).decode()
+            except UnicodeDecodeError:
+                _result = "\n\t" + repr(result)
+        logger.debug(f"{self.__class__.__name__}: output: {_result}")
+
+        if self.store is not None:
+            ctx.push_variable(self.store, result)
+            # When a result is stored, the original input data should be passed though
+            return data
+        return result
 
 class RegexSelector(Selector):
     default_key = "regex"

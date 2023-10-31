@@ -182,15 +182,7 @@ class DataWatch(Watch):
         Return the selected data from the Watch
         """
         for selector_kwargs in self.selectors:
-            data = Selector.load(**selector_kwargs).run_all(ctx, data)
-
-            _data = "<empty>"
-            if len(data):
-                try:
-                    _data = "\n\t" + b'\n\t'.join(data).decode()
-                except UnicodeDecodeError:
-                    _data = "\n\t" + repr(data)
-            logger.debug(f"{self.__class__.__name__}: Selector output: {_data}")
+            data = Selector.load(**selector_kwargs).execute(ctx, data)
         return data
 
     def match_data(self, ctx: Context, data: typing.List[bytes]) -> bool:
@@ -209,17 +201,15 @@ class DataWatch(Watch):
         self.render_variables(ctx)
         data = self.select_data(ctx, self.fetch_data(ctx))
         
-        # Store watch data in the context
+        # Store data in the context
+        ctx.set_variable(self.hash, data)
         if self.store is not None:
             ctx.set_variable(self.store, data)
-        ctx.set_variable(self.hash, data)
-        ctx.push_variable("data", data)
-
+        
         r = (False, [], [])
         if self.match_data(ctx, data):
             r = (True, self.get_comment(ctx), self.get_data(ctx))
         
-        ctx.pop_variable("data")
         return r
 
 class TrueWatch(DataWatch):

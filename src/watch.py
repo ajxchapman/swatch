@@ -8,6 +8,7 @@ import typing
 from urllib.parse import urlparse
 
 from src.action import Action
+from src.cache import Cache
 from src.context import Context
 from src.loadable import Loadable, LoadableException, type_one_of, type_none_or_type, type_list_of_type, type_choice
 from src.match import Match
@@ -69,9 +70,6 @@ class Watch(Loadable):
         Returns a tuple of (action_trigger, action_comment, action_data) with `action_trigger` True if the action_data of the Watch should be reported, False otherwise
         """
         logger.debug(f"{self.__class__.__name__}: process enter")
-        cache = ctx.get_variable("cache")
-        # Set the last run time
-        cache.put_entry(f"{self.hash}-executed", ctx.get_variable("starttime"))
 
         # Push a new frame into the context
         ctx.push_frame(self.hash)
@@ -84,22 +82,9 @@ class Watch(Loadable):
                 watch.process(ctx)
             
             trigger, comment, data = self.run(ctx)
-            
         except:
-            failure_count = cache.get_entry(f"{self.hash}-failures") or 0
-            cache.put_entry(f"{self.hash}-failures", failure_count + 1)
+            logger.debug(f"{self.__class__.__name__}: process exception")
             raise
-        else:
-            # Clear any previous failure count
-            cache.put_entry(f"{self.hash}-failures", 0)
-
-            if not trigger:
-                return False, [], []
-            
-            # Record the last triggered time
-            cache.put_entry(f"{self.hash}-triggered", ctx.get_variable("starttime"))
-            logger.debug(f"{self.__class__.__name__}: process exit triggered {trigger}")
-            return trigger, comment, data
         finally:
             # Execute the `after` step within the finally block to ensure it is always executed
             # Ignore exceptions thrown by the `after` block
@@ -112,6 +97,11 @@ class Watch(Loadable):
             
             # Pop the frame from the context clearing all context variables
             ctx.pop_frame(self.hash)
+        
+        logger.debug(f"{self.__class__.__name__}: process exit triggered {trigger}")
+        if not trigger:
+            return False, [], []
+        return trigger, comment, data
 
     def execute(self, ctx: Context) -> None:
         """
@@ -120,7 +110,7 @@ class Watch(Loadable):
         starttime =  time.time()
         ctx.set_variable("starttime", int(starttime))
         config = ctx.get_variable("config")
-        cache = ctx.get_variable("cache")
+        cache: Cache = ctx.get_variable("cache")
         
         actions = [Action.load(**x) for x in self.actions]
         if "default_actions" in config:
@@ -130,9 +120,13 @@ class Watch(Loadable):
                 logger.warning("Unable to load default actions, skipping")
 
         try:
+            # Cache the last run time
+            cache.put_entry(f"{self.hash}-executed", ctx.get_variable("starttime"))
             trigger, comment, data = self.process(ctx)
         except:
+            # Cache the failure count
             failure_count = cache.get_entry(f"{self.hash}-failures")
+            cache.put_entry(f"{self.hash}-failures", failure_count + 1)
             
             if ctx["config"].get("verbose") == True:
                 logger.exception(f"{self.hash}:{int(time.time() - starttime):04}:Error:{failure_count}")
@@ -147,7 +141,12 @@ class Watch(Loadable):
                 for action in actions:
                     action.error(ctx, action_data)
         else:
+            # Clear cached failure count
+            cache.put_entry(f"{self.hash}-failures", 0)
+
             if trigger:
+                # Cache the last triggered time
+                cache.put_entry(f"{self.hash}-triggered", ctx.get_variable("starttime"))
                 logger.info(f"{self.hash}:{int(time.time() - starttime):04}:True")
 
                 action_data = {

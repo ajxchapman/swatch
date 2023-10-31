@@ -205,6 +205,8 @@ class DataWatch(Watch):
         ctx.set_variable(self.hash, data)
         if self.store is not None:
             ctx.set_variable(self.store, data)
+        # Ensure data variable is available for comment rendering
+        ctx.set_variable("data", data)
         
         r = (False, [], [])
         if self.match_data(ctx, data):

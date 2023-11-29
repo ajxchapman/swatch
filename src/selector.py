@@ -128,9 +128,13 @@ class BytesSelector(Selector):
 
 class LinesSelector(Selector):
     keys = {
-        "keepends" : (bool, False)
+        "keepends" : (bool, False),
+        "html" : (bool, False)
     }
     def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
+        if html:
+            data = re.sub(b'<(br\s*/|/p)>', b'<\\1>\n', data)
+            
         return data.splitlines(keepends=self.keepends)
 
 class SplitSelector(Selector):

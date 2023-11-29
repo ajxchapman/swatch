@@ -62,22 +62,26 @@ class Selector(Loadable):
 class RegexSelector(Selector):
     default_key = "regex"
     keys = {
-        "regex" : (str, ".*")
+        "regex" : (str, ".*"),
+        "all" : (bool, False)
     }
 
     def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
-        m = re.search(self.regex.encode(), data)
-        if m is None:
-            return []
+        results = []
+        for m in re.finditer(self.regex.encode(), data):
+            # Return as a json dictionary if named groups are used
+            if m.groupdict():
+                results.append(json.dumps({k: v.decode() for k, v in m.groupdict().items()}).encode())
+            # Otherwise return as a list
+            else:
+                if len(m.groups()) == 0:
+                    results.append(m.group())
+                else:
+                    results.extend(m.groups())
         
-        # Return as a json dictionary if named groups are used
-        if m.groupdict():
-            return [json.dumps({k: v.decode() for k, v in m.groupdict().items()}).encode()]
-
-        # Otherwise return as a list
-        if len(m.groups()) == 0:
-            return [m.group()]
-        return list(m.groups())
+            if not self.all:
+                break
+        return results
 
 class JqSelector(Selector):
     def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:

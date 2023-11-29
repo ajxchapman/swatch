@@ -15,6 +15,10 @@ def find(watch_files, hash):
     for watch_file in watch_files:
         with open(watch_file) as f:
             watch_config = yaml.safe_load(f)
+
+        if watch_config is None:
+            continue
+        
         for watch in watch_config.get("watch", []):
             _watch = Watch.load(**watch)
             print(_watch.hash, watch_file)

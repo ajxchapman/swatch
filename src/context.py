@@ -47,6 +47,9 @@ class Context:
         self._variables[key] = value
 
     def get_variable(self, key: str, default: typing.Any=None) -> typing.Any:
+        """
+        Get the most recent value of a variable from the context
+        """
         for frame in self.frames:
             if key in frame:
                 return frame[key][-1]

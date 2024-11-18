@@ -11,9 +11,15 @@ from bs4 import BeautifulSoup
 
 from src.cache import Cache
 from src.context import Context
-from src.loadable import Loadable, type_none_or_type
+from src.loadable import Loadable, type_none_or_type, type_list_of_type
 
 logger = logging.getLogger(__name__)
+
+# TODO:
+#   Implement the type typing.List[bytes|typing.List[bytes]] as a custom type for `run_all` methods
+#   Perform a final check in `DataWatch.select_data` to ensure the final type is typing.List[bytes]
+#  _OR_
+#   Should there be a `filter` method to perform the filtering that could be implemented to avoid the above change?
 
 class SelectorException(Exception):
     pass
@@ -22,21 +28,23 @@ class Selector(Loadable):
     default_key = "value"
     keys = {
         "value" : (type_none_or_type(str), None),
-        "input" : (type_none_or_type(str), None),
-        "store" : (type_none_or_type(str), None)
+        "input" : (type_none_or_type(str), None), # The variable to use as input overriding the original data
+        "store" : (type_none_or_type(str), None), # Store the result in a variable and pass through the original data
     }
 
     def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
         raise Exception("Not Implemented")
 
     def run_all(self, ctx: Context, data:typing.List[bytes]) -> typing.List[bytes]:
-        # Run the modifier over each datum, and flatpack the result
+        # Run the modifier over each datum recording the result
         _data = []
         for datum in data:
             result = self.run(ctx, datum)
-            _data.extend([x for x in result if x is not None and len(x) > 0])
+            if len(result) > 0:
+                _data.extend(result)
         return _data
     
+    # API contract for all selectors
     def execute(self, ctx: Context, data:typing.List[bytes]) -> typing.List[bytes]:
         _data = data
         if self.input is not None:
@@ -45,19 +53,48 @@ class Selector(Loadable):
                 _data = [_data]
 
         result = self.run_all(ctx, _data)
-        _result = "<empty>"
-        if len(result):
-            try:
-                _result = "\n\t" + b'\n\t'.join(result).decode()
-            except UnicodeDecodeError:
-                _result = "\n\t" + repr(result)
-        logger.debug(f"{self.__class__.__name__}: output: {_result}")
+        # Ensure correct typing from the selectors
+        if not isinstance(result, list) or any([not isinstance(x, bytes) for x in result]):
+            raise SelectorException(f"Invalid result from {self.__class__.__name__}: {result}")
+        
+        # Debug print the result
+        if logger.level <= logging.DEBUG:
+            _result = "<empty>"
+            if len(result):
+                try:
+                    _result = "".join(["\n\t" + repr(x) for x in result])
+                except UnicodeDecodeError:
+                    _result = "\n\t" + repr(result)
+            logger.debug(f"{self.__class__.__name__}: output: {_result}")
 
         if self.store is not None:
             ctx.push_variable(self.store, result)
             # When a result is stored, the original input data should be passed though
             return data
         return result
+
+class SubSelector(Selector):
+    default_key = "value"
+    keys = {
+        "value" : (type_list_of_type(dict), None),
+    }
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.selectors = [Selector.load(**x) for x in self.value]
+
+    def run_all(self, ctx: Context, data:typing.List[bytes]) -> typing.List[bytes]:
+        _data = []
+        for datum in data:
+            datum = [datum]
+            for selector in self.selectors:
+                datum = selector.run_all(ctx, datum)
+            _data.extend(datum)
+            
+        # Ensure correct typing from the sub selectors
+        if any([not isinstance(x, bytes) for x in _data]):
+            raise SelectorException(f"Invalid result from {self.__class__.__name__}: {_data}")
+        return _data
 
 class RegexSelector(Selector):
     default_key = "regex"
@@ -71,7 +108,7 @@ class RegexSelector(Selector):
         for m in re.finditer(self.regex.encode(), data):
             # Return as a json dictionary if named groups are used
             if m.groupdict():
-                results.append(json.dumps({k: v.decode() for k, v in m.groupdict().items()}).encode())
+                results.append(json.dumps({k: (v.decode() if v else None) for k, v in m.groupdict().items()}).encode())
             # Otherwise return as a list
             else:
                 if len(m.groups()) == 0:
@@ -138,6 +175,9 @@ class LinesSelector(Selector):
         return data.splitlines(keepends=self.keepends)
 
 class SplitSelector(Selector):
+    """
+    Split a byte string into a list of byte strings using a separator
+    """
     keys = {
         "sep" : (str, ","),
         "start" : (int, 0),
@@ -148,7 +188,24 @@ class SplitSelector(Selector):
         bsep = self.sep.encode()
         return data.split(bsep)[self.start:self.end]
 
+class JoinSelector(Selector):
+    """
+    Join either a list of bytes with a separator
+    """
+    default_key = "sep"
+    keys = {
+        "sep" : (str, ",")
+    }
+    
+    def run_all(self, ctx: Context, data: typing.List[bytes]) -> typing.List[bytes]:
+        if len(data) == 0:
+            return []
+        return [self.sep.encode().join(data)]
+
 class StripSelector(Selector):
+    """
+    Strip leading and trailing characters from a byte string
+    """
     default_key = "chars"
     keys = {
         "chars" : (str, "\r\n\t "),
@@ -158,10 +215,16 @@ class StripSelector(Selector):
         return [data.strip(self.chars.encode())]
 
 class StripTagsSelector(Selector):
+    """
+    Strip HTML tags from a byte string
+    """
     def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
         return [re.sub(b'<[^>]+>', b'', data)]
 
 class ReplaceSelector(Selector):
+    """
+    Replace a regex pattern with a byte string
+    """
     default_key = "regex"
     keys = {
         "regex" : (str, ".*"),
@@ -172,16 +235,36 @@ class ReplaceSelector(Selector):
         return [re.sub(self.regex.encode(), self.replacement.encode(), data)]
 
 class SliceSelector(Selector):
+    """
+    Slice a list of bytes
+    """
     default_key = "end"
     keys = {
         "start" : (int, 0),
         "end" : (int, None)
     }
 
-    def run_all(self, ctx: Context, data:typing.List[bytes]) -> list:
+    def run_all(self, ctx: Context, data:typing.List[bytes]) -> typing.List[bytes]:
         return data[self.start:self.end]
 
+class PickSelector(Selector):
+    """
+    Pick indexed elements from a list of bytes
+    """
+    default_key = "index"
+    keys = {
+        "index" : (type_list_of_type(int), [])
+    }
+
+    def run_all(self, ctx: Context, data:typing.List[bytes]) -> typing.List[bytes]:
+        if len(data) == 0:
+            return []
+        return [x for i, x in enumerate(data) if i in self.index]
+
 class NewSelector(Selector):
+    """
+    Select new data from a list of bytes that is not in the cache
+    """
     default_key = "key"
     keys = {
         "key" : (type_none_or_type(str), None),
@@ -205,6 +288,9 @@ class NewSelector(Selector):
         return new_entries
     
 class SinceSelector(Selector):
+    """
+    Select data from a list of bytes up until a previously observed datum
+    """
     default_key = "key"
     keys = {
         "key" : (type_none_or_type(str), None),

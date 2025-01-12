@@ -36,6 +36,16 @@ class SelectorItem():
     
     def __repr__(self):
         return f"<SelectorItem value={repr(self.value)}, vars={repr(self.vars)}>"
+    
+    def __hash__(self) -> int:
+        hash_value = hash(self.__class__.__name__)
+        hash_value ^= hash(self.value)
+        for k, v in self.vars.items():
+            hash_value ^= hash(k) ^ hash(v)
+        return hash_value
+    
+    def __eq__(self, other:SelectorItem) -> bool:
+        return hash(self) == hash(other)
 
 class Selector(Loadable):
     default_key = "value"
@@ -99,17 +109,17 @@ class SubSelector(Selector):
 
     def run_all(self, ctx: Context, items:typing.List[SelectorItem]) -> typing.List[SelectorItem]:
         # TODO: Should this call execute instead of run_all?
-        _data = []
-        for datum in items:
-            datum = [datum]
+        _items = []
+        for item in items:
+            item = [item]
             for selector in self.selectors:
-                datum = selector.run_all(ctx, datum)
-            _data.extend(datum)
+                item = selector.run_all(ctx, item)
+            _items.extend(item)
             
         # Ensure correct typing from the sub selectors
-        if any([not isinstance(x, bytes) for x in _data]):
-            raise SelectorException(f"Invalid result from {self.__class__.__name__}: {_data}")
-        return _data
+        if any([not isinstance(x, SelectorItem) for x in _items]):
+            raise SelectorException(f"Invalid result from {self.__class__.__name__}: {_items}")
+        return _items
 
 class RegexSelector(Selector):
     default_key = "regex"
@@ -203,7 +213,7 @@ class SplitSelector(Selector):
 
     def run(self, ctx: Context, item:SelectorItem) -> typing.List[SelectorItem]:
         bsep = self.sep.encode()
-        return [item.clone(x) for x in item.split(bsep)[self.start:self.end]]
+        return [item.clone(x) for x in item.value.split(bsep)[self.start:self.end]]
 
 class JoinSelector(Selector):
     """
@@ -294,8 +304,13 @@ class CacheSelector(Selector):
         hash_key = ctx.expand_context(self.cache_key) if self.cache_key is not None else f"{self.hash}-selector-cache-{self.__class__.__name__.lower()}"
         logger.debug(f"{self.__class__.__name__} get_cached_values: cache key {hash_key}")
 
-        # Return the cached file or a default value for the CacheSelector type
-        return cache.get_file(hash_key) or (self.type() if callable(self.type) else None)
+        # Return the cached file cast as type or a default value for the CacheSelector type
+        data = cache.get_file(hash_key)
+        if data:
+            if self.type:
+                return self.type(data)
+            return data
+        return self.type() if callable(self.type) else None
     
     def put_cached_data(self, ctx: Context, data: typing.Any) -> None:
         cache: Cache = ctx.get_variable("cache")
@@ -331,6 +346,7 @@ class SinceSelector(CacheSelector):
     def run_all(self, ctx: Context, items:typing.List[SelectorItem]) -> typing.List[SelectorItem]:
         index = None
         last_key = self.get_cached_data(ctx)
+        print(last_key)
         if last_key is not None:
             for i, item in enumerate(items):
                 key = item.vars.get(self.key, hashlib.sha256(item.value).hexdigest())
@@ -339,6 +355,7 @@ class SinceSelector(CacheSelector):
                     break
         
         _items = items[:index]
+        print(_items)
         if len(_items) > 0:
             key = _items[0].vars.get(self.key, hashlib.sha256(_items[0].value).hexdigest().encode()).decode()
             self.put_cached_data(ctx, key)

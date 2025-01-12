@@ -3,7 +3,7 @@ import unittest
 
 from src.cache import Cache
 from src.context import Context
-from src.selector import Selector
+from src.selector import Selector, SelectorItem
 
 class TestSinceSelector(unittest.TestCase):
     def setUp(self) -> None:
@@ -15,29 +15,28 @@ class TestSinceSelector(unittest.TestCase):
         self.cache.close()
 
     def test_empty(self):
-        s: Selector = Selector.load(type="since", key="test_empty")
-        data = [b'1', b'2', b'3', b'4']
+        s: Selector = Selector.load(type="since", cache_key="test_empty")
+        items = [SelectorItem(b'1'), SelectorItem(b'2'), SelectorItem(b'3'), SelectorItem(b'4')]
 
-        result = s.run_all(self.ctx, data)
-        self.assertListEqual(result, data)
-        self.assertTrue(self.cache.has_entry("test_empty"))
-        self.assertEqual(self.cache.get_entry("test_empty"), hashlib.sha256(b'1').hexdigest())
+        result = s.run_all(self.ctx, items)
+        self.assertListEqual(result, items)
+        self.assertEqual(self.cache.get_file("test_empty"), hashlib.sha256(b'1').hexdigest())
     
     def test_new(self):
-        s: Selector = Selector.load(type="since", key="test_new")
+        s: Selector = Selector.load(type="since", cache_key="test_new")
+        items = [SelectorItem(b'1'), SelectorItem(b'2'), SelectorItem(b'3'), SelectorItem(b'4')]
         
-        s.run_all(self.ctx, [b'3', b'4'])
-        result = s.run_all(self.ctx, [b'1', b'2', b'3', b'4'])
-        self.assertListEqual(result, [b'1', b'2'])
-        self.assertTrue(self.cache.has_entry("test_new"))
-        self.assertEqual(self.cache.get_entry("test_new"), hashlib.sha256(b'1').hexdigest())
+        s.run_all(self.ctx, [items[2], items[3]])
+        result = s.run_all(self.ctx, items)
+        self.assertListEqual(result, [items[0], items[1]])
+        self.assertEqual(self.cache.get_file("test_new"), hashlib.sha256(b'1').hexdigest())
     
     def test_no_new(self):
-        s: Selector = Selector.load(type="since", key="test_no_new")
+        s: Selector = Selector.load(type="since", cache_key="test_no_new")
+        items = [SelectorItem(b'1'), SelectorItem(b'2'), SelectorItem(b'3'), SelectorItem(b'4')]
 
-        s.run_all(self.ctx, [b'1', b'2', b'3', b'4'])
-        result = s.run_all(self.ctx, [b'1', b'2', b'3', b'4'])
+        s.run_all(self.ctx, items)
+        result = s.run_all(self.ctx, items)
         self.assertListEqual(result, [])
-        self.assertTrue(self.cache.has_entry("test_no_new"))
-        self.assertEqual(self.cache.get_entry("test_no_new"), hashlib.sha256(b'1').hexdigest())
+        self.assertEqual(self.cache.get_file("test_no_new"), hashlib.sha256(b'1').hexdigest())
         

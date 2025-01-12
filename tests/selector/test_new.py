@@ -1,8 +1,9 @@
+import hashlib
 import unittest
 
 from src.cache import Cache
 from src.context import Context
-from src.selector import Selector
+from src.selector import Selector, SelectorItem
 
 class TestNewSelector(unittest.TestCase):
     def setUp(self) -> None:
@@ -16,26 +17,29 @@ class TestNewSelector(unittest.TestCase):
         self.cache.close()
 
     def test_basic(self):
-        s: Selector = Selector.load(type="new", key="test_basic")
-        data = [b'1', b'2', b'3', b'4']
+        s: Selector = Selector.load(type="new", cache_key="test_basic")
+        items = [SelectorItem(b'1'), SelectorItem(b'2'), SelectorItem(b'3'), SelectorItem(b'4')]
 
-        result = s.run_all(self.ctx, data)
-        self.assertListEqual(result, data)
-        self.assertSetEqual(set(self.cache.get_file("test_basic")), set([b'1', b'2', b'3', b'4']))
+        result = s.run_all(self.ctx, items)
+        self.assertListEqual(result, items)
+        self.assertSetEqual(set(self.cache.get_file("test_basic")), set([hashlib.sha256(x.value).hexdigest() for x in items]))
+        
     
     def test_new(self):
-        s: Selector = Selector.load(type="new", key="test_new")
+        s: Selector = Selector.load(type="new", cache_key="test_new")
+        items = [SelectorItem(b'1'), SelectorItem(b'2'), SelectorItem(b'3'), SelectorItem(b'4')]
         
-        s.run_all(self.ctx, [b'1', b'2'])
-        result = s.run_all(self.ctx, [b'2', b'3', b'4'])
-        self.assertListEqual(result, [b'3', b'4'])
-        self.assertSetEqual(set(self.cache.get_file("test_new")), set([b'1', b'2', b'3', b'4']))
+        s.run_all(self.ctx, [items[0], items[1]])
+        result = s.run_all(self.ctx, [items[1], items[2], items[3]])
+        self.assertListEqual(result, [items[2], items[3]])
+        self.assertSetEqual(set(self.cache.get_file("test_new")), set([hashlib.sha256(x.value).hexdigest() for x in items]))
     
     def test_no_new(self):
-        s: Selector = Selector.load(type="new", key="test_no_new")
+        s: Selector = Selector.load(type="new", cache_key="test_no_new")
+        items = [SelectorItem(b'1'), SelectorItem(b'2'), SelectorItem(b'3'), SelectorItem(b'4')]
 
-        s.run_all(self.ctx, [b'1', b'2', b'3', b'4'])
-        result = s.run_all(self.ctx, [b'2', b'3'])
+        s.run_all(self.ctx, items)
+        result = s.run_all(self.ctx, [items[2], items[3]])
         self.assertListEqual(result, [])
-        self.assertSetEqual(set(self.cache.get_file("test_no_new")), set([b'1', b'2', b'3', b'4']))
+        self.assertSetEqual(set(self.cache.get_file("test_no_new")), set([hashlib.sha256(x.value).hexdigest() for x in items]))
         

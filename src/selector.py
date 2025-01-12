@@ -285,6 +285,7 @@ class CacheSelector(Selector):
     default_key = "cache_key"
     keys = {
         "cache_key" : (type_none_or_type(str), None),
+        "key" : (type_none_or_type(str), "key"),
     }
     type = None
 
@@ -314,7 +315,7 @@ class NewSelector(CacheSelector):
         # Iterate instead of `difference` to preserve order
         new_items = []
         for item in items:
-            key = item.vars.get("key", hashlib.sha256(item.value).hexdigest())
+            key = item.vars.get(self.key, hashlib.sha256(item.value).hexdigest().encode()).decode()
             if not key in cached_set:
                 new_items.append(item)
                 cached_set.add(key)
@@ -332,15 +333,15 @@ class SinceSelector(CacheSelector):
         last_key = self.get_cached_data(ctx)
         if last_key is not None:
             for i, item in enumerate(items):
-                key = item.vars.get("key", hashlib.sha256(item.value).hexdigest())
+                key = item.vars.get(self.key, hashlib.sha256(item.value).hexdigest())
                 if key == last_key:
                     index = i
                     break
         
         _items = items[:index]
         if len(_items) > 0:
-            key = _items[0].vars.get("key", hashlib.sha256(_items[0].value).hexdigest())
-            self.put_cached_data(ctx, list(key))
+            key = _items[0].vars.get(self.key, hashlib.sha256(_items[0].value).hexdigest().encode()).decode()
+            self.put_cached_data(ctx, key)
         return _items
 
 class DictstoreSelector(CacheSelector):
@@ -352,23 +353,30 @@ class DictstoreSelector(CacheSelector):
     def run_all(self, ctx: Context, items:typing.List[SelectorItem]) -> typing.List[SelectorItem]:
         cached_dict = self.get_cached_data(ctx)
         for item in items:
-            key = item.vars.get("key", hashlib.sha256(item.value).hexdigest())
+            key = item.vars.get(self.key, hashlib.sha256(item.value).hexdigest().encode()).decode()
             cached_dict[key] = item.encode()
         self.put_cached_data(ctx, cached_dict)
+        print(cached_dict)
         return items
     
 class DictloadSelector(CacheSelector):
     """
     Load items from a dict
     """
+    keys = {
+        "filter" : (bool, False),
+    }
     type = dict
 
     def run_all(self, ctx: Context, items:typing.List[SelectorItem]) -> typing.List[SelectorItem]:
         cached_dict = self.get_cached_data(ctx)
         results = []
         for item in items:
-            results.append(item)
-            key = item.vars.get("key", hashlib.sha256(item.value).hexdigest())
+            if not self.filter:
+                results.append(item)
+            key = item.vars.get(self.key, hashlib.sha256(item.value).hexdigest().encode()).decode()
             if key in cached_dict:
+                if self.filter:
+                    results.append(item)
                 results[-1] = item.clone(vars=cached_dict[key]["vars"])
         return results

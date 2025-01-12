@@ -15,14 +15,27 @@ from src.loadable import Loadable, type_none_or_type, type_list_of_type
 
 logger = logging.getLogger(__name__)
 
-# TODO:
-#   Implement the type typing.List[bytes|typing.List[bytes]] as a custom type for `run_all` methods
-#   Perform a final check in `DataWatch.select_data` to ensure the final type is typing.List[bytes]
-#  _OR_
-#   Should there be a `filter` method to perform the filtering that could be implemented to avoid the above change?
 
 class SelectorException(Exception):
     pass
+
+class SelectorItem():
+    def __init__(self, value:bytes, vars:typing.Optional[dict]=None):
+        self.value:bytes = value
+        self.vars:dict = vars or dict()
+
+    def clone(self, value:typing.Optional[bytes]=None, vars:typing.Optional[dict]={}) -> SelectorItem:
+        return SelectorItem(value or self.value, {**self.vars, **vars})
+
+    def encode(self) -> dict:
+        return {"value": self.value, "vars": self.vars}
+    
+    @classmethod
+    def decode(cls, data:dict) -> SelectorItem:
+        return cls(data["value"], data["vars"])
+    
+    def __repr__(self):
+        return f"<SelectorItem value={repr(self.value)}, vars={repr(self.vars)}>"
 
 class Selector(Loadable):
     default_key = "value"
@@ -32,46 +45,47 @@ class Selector(Loadable):
         "store" : (type_none_or_type(str), None), # Store the result in a variable and pass through the original data
     }
 
-    def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
+    def run(self, ctx: Context, item:SelectorItem) -> typing.List[SelectorItem]:
         raise Exception("Not Implemented")
 
-    def run_all(self, ctx: Context, data:typing.List[bytes]) -> typing.List[bytes]:
+    def run_all(self, ctx: Context, items:typing.List[SelectorItem]) -> typing.List[SelectorItem]:
         # Run the modifier over each datum recording the result
         _data = []
-        for datum in data:
+        for datum in items:
             result = self.run(ctx, datum)
             if len(result) > 0:
                 _data.extend(result)
         return _data
     
     # API contract for all selectors
-    def execute(self, ctx: Context, data:typing.List[bytes]) -> typing.List[bytes]:
+    def execute(self, ctx: Context, data:typing.List[SelectorItem]) -> typing.List[SelectorItem]:
         _data = data
         if self.input is not None:
             _data = ctx.get_variable(self.input)
             if not isinstance(_data, list):
                 _data = [_data]
 
-        result = self.run_all(ctx, _data)
+        results = self.run_all(ctx, _data)
+
         # Ensure correct typing from the selectors
-        if not isinstance(result, list) or any([not isinstance(x, bytes) for x in result]):
-            raise SelectorException(f"Invalid result from {self.__class__.__name__}: {result}")
+        if not isinstance(results, list) or any([not isinstance(x, SelectorItem) for x in results]):
+            raise SelectorException(f"Invalid result from {self.__class__.__name__}: {results}")
         
         # Debug print the result
         if logger.level <= logging.DEBUG:
             _result = "<empty>"
-            if len(result):
+            if len(results):
                 try:
-                    _result = "".join(["\n\t" + repr(x) for x in result])
+                    _result = "".join(["\n\t" + repr(x) for x in results])
                 except UnicodeDecodeError:
-                    _result = "\n\t" + repr(result)
+                    _result = "\n\t" + repr(results)
             logger.debug(f"{self.__class__.__name__}: output: {_result}")
 
         if self.store is not None:
-            ctx.push_variable(self.store, result)
+            ctx.push_variable(self.store, results)
             # When a result is stored, the original input data should be passed though
             return data
-        return result
+        return results
 
 class SubSelector(Selector):
     default_key = "value"
@@ -83,9 +97,10 @@ class SubSelector(Selector):
         super().__init__(**kwargs)
         self.selectors = [Selector.load(**x) for x in self.value]
 
-    def run_all(self, ctx: Context, data:typing.List[bytes]) -> typing.List[bytes]:
+    def run_all(self, ctx: Context, items:typing.List[SelectorItem]) -> typing.List[SelectorItem]:
+        # TODO: Should this call execute instead of run_all?
         _data = []
-        for datum in data:
+        for datum in items:
             datum = [datum]
             for selector in self.selectors:
                 datum = selector.run_all(ctx, datum)
@@ -103,43 +118,43 @@ class RegexSelector(Selector):
         "all" : (bool, False)
     }
 
-    def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
+    def run(self, ctx: Context, item:SelectorItem) -> typing.List[SelectorItem]:
         results = []
-        for m in re.finditer(self.regex.encode(), data):
-            # Return as a json dictionary if named groups are used
+        for m in re.finditer(self.regex.encode(), item.value):
+            # If named groups are used add the values to data.vars
             if m.groupdict():
-                results.append(json.dumps({k: (v.decode() if v else None) for k, v in m.groupdict().items()}).encode())
-            # Otherwise return as a list
+                results.append(item.clone(m.group(), m.groupdict()))
             else:
+                # If there are no groups, just add the match
                 if len(m.groups()) == 0:
-                    results.append(m.group())
+                    results.append(item.clone(m.group()))
+                # Otherwise extend the result set with the matched groups
                 else:
-                    results.extend(m.groups())
-        
+                    results.extend([item.clone(x) for x in m.groups()])
             if not self.all:
                 break
         return results
 
 class JqSelector(Selector):
-    def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
-        j = json.loads(data)
-        output_lines = []
+    def run(self, ctx: Context, item:SelectorItem) -> typing.List[SelectorItem]:
+        j = json.loads(item.value)
+        results = []
         for line in jq.compile(self.value).input(j).all():
             if isinstance(line, str):
-                output_lines.append(line.encode())
+                results.append(item.clone(line.encode()))
             else:
-                output_lines.append(json.dumps(line).encode())
-        return output_lines
+                results.append(item.clone(vars=line))
+        return results
 
 class HTMLSelector(Selector):
-    def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
-        soup = BeautifulSoup(data, "html.parser")
-        return [str(x).encode() for x in soup.select(self.value)]
+    def run(self, ctx: Context, item:SelectorItem) -> typing.List[SelectorItem]:
+        soup = BeautifulSoup(item.value, "html.parser")
+        return [item.clone(str(x).encode()) for x in soup.select(self.value)]
 
 class XmlSelector(Selector):
-    def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
-        soup = BeautifulSoup(data, "lxml-xml")
-        return [str(x).encode() for x in soup.select(self.value)]
+    def run(self, ctx: Context, item:SelectorItem) -> typing.List[SelectorItem]:
+        soup = BeautifulSoup(item.value, "lxml-xml")
+        return [item.clone(str(x).encode()) for x in soup.select(self.value)]
 
 class DecodeSelector(Selector):
     default_key = "encoding"
@@ -148,9 +163,9 @@ class DecodeSelector(Selector):
     }
     ENCODING_HTML = "html"
 
-    def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
+    def run(self, ctx: Context, item:SelectorItem) -> typing.List[SelectorItem]:
         if self.encoding == self.ENCODING_HTML:
-            return [html.unescape(data.decode()).encode()]
+            return [item.clone(html.unescape(item.value.decode()).encode())]
         raise Exception(f"Unknown encoding {self.encoding}")
 
 class BytesSelector(Selector):
@@ -160,19 +175,21 @@ class BytesSelector(Selector):
         "end" : (int, None)
     }
 
-    def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
-        return [data[self.start:self.end]]
+    def run(self, ctx: Context, item:SelectorItem) -> typing.List[SelectorItem]:
+        return [item.clone(item.value[self.start:self.end])]
 
 class LinesSelector(Selector):
     keys = {
         "keepends" : (bool, False),
         "html" : (bool, False)
     }
-    def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
+
+    def run(self, ctx: Context, item:SelectorItem) -> typing.List[SelectorItem]:
+        value = item.value
         if html:
-            data = re.sub(b'<(br\s*/|/p)>', b'<\\1>\n', data)
+            value = re.sub(b'<(br\s*/|/p)>', b'<\\1>\n', value)
             
-        return data.splitlines(keepends=self.keepends)
+        return [item.clone(x) for x in value.splitlines(keepends=self.keepends)]
 
 class SplitSelector(Selector):
     """
@@ -184,9 +201,9 @@ class SplitSelector(Selector):
         "end" : (int, None)
     }
 
-    def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
+    def run(self, ctx: Context, item:SelectorItem) -> typing.List[SelectorItem]:
         bsep = self.sep.encode()
-        return data.split(bsep)[self.start:self.end]
+        return [item.clone(x) for x in item.split(bsep)[self.start:self.end]]
 
 class JoinSelector(Selector):
     """
@@ -197,10 +214,11 @@ class JoinSelector(Selector):
         "sep" : (str, ",")
     }
     
-    def run_all(self, ctx: Context, data: typing.List[bytes]) -> typing.List[bytes]:
-        if len(data) == 0:
+    def run_all(self, ctx: Context, items:typing.List[SelectorItem]) -> typing.List[SelectorItem]:
+        if len(items) == 0:
             return []
-        return [self.sep.encode().join(data)]
+        # Clone the first item in data and join the remaining item values
+        return [items[0].clone(self.sep.encode().join([x.value for x in items]))]
 
 class StripSelector(Selector):
     """
@@ -211,15 +229,16 @@ class StripSelector(Selector):
         "chars" : (str, "\r\n\t "),
     }
 
-    def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
-        return [data.strip(self.chars.encode())]
+    def run(self, ctx: Context, item:SelectorItem) -> typing.List[SelectorItem]:
+        return [item.clone(item.value.strip(self.chars.encode()))]
 
 class StripTagsSelector(Selector):
     """
     Strip HTML tags from a byte string
     """
-    def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
-        return [re.sub(b'<[^>]+>', b'', data)]
+
+    def run(self, ctx: Context, item:SelectorItem) -> typing.List[SelectorItem]:
+        return [item.clone(re.sub(b'<[^>]+>', b'', item.value))]
 
 class ReplaceSelector(Selector):
     """
@@ -231,12 +250,12 @@ class ReplaceSelector(Selector):
         "replacement" : (str, "")
     }
 
-    def run(self, ctx: Context, data:bytes) -> typing.List[bytes]:
-        return [re.sub(self.regex.encode(), self.replacement.encode(), data)]
+    def run(self, ctx: Context, item:SelectorItem) -> typing.List[SelectorItem]:
+        return [item.clone(re.sub(self.regex.encode(), self.replacement.encode(), item.value))]
 
 class SliceSelector(Selector):
     """
-    Slice a list of bytes
+    Slice a list of SelectorItems
     """
     default_key = "end"
     keys = {
@@ -244,74 +263,112 @@ class SliceSelector(Selector):
         "end" : (int, None)
     }
 
-    def run_all(self, ctx: Context, data:typing.List[bytes]) -> typing.List[bytes]:
-        return data[self.start:self.end]
+    def run_all(self, ctx: Context, items:typing.List[SelectorItem]) -> typing.List[SelectorItem]:
+        return items[self.start:self.end]
 
 class PickSelector(Selector):
     """
-    Pick indexed elements from a list of bytes
+    Pick indexed items from a list of SelectorItems
     """
     default_key = "index"
     keys = {
         "index" : (type_list_of_type(int), [])
     }
 
-    def run_all(self, ctx: Context, data:typing.List[bytes]) -> typing.List[bytes]:
-        if len(data) == 0:
+    def run_all(self, ctx: Context, items:typing.List[SelectorItem]) -> typing.List[SelectorItem]:
+        if len(items) == 0:
             return []
-        return [x for i, x in enumerate(data) if i in self.index]
+        return [x for i, x in enumerate(items) if i in self.index]
 
-class NewSelector(Selector):
-    """
-    Select new data from a list of bytes that is not in the cache
-    """
-    default_key = "key"
+
+class CacheSelector(Selector):
+    default_key = "cache_key"
     keys = {
-        "key" : (type_none_or_type(str), None),
+        "cache_key" : (type_none_or_type(str), None),
     }
+    type = None
 
-    def run_all(self, ctx: Context, data:typing.List[bytes]) -> typing.List[bytes]:
+    def get_cached_data(self, ctx: Context) -> typing.Any:
         cache: Cache = ctx.get_variable("cache")
+        hash_key = ctx.expand_context(self.cache_key) if self.cache_key is not None else f"{self.hash}-selector-cache-{self.__class__.__name__.lower()}"
+        logger.debug(f"{self.__class__.__name__} get_cached_values: cache key {hash_key}")
 
-        hash_key = ctx.expand_context(self.key) if self.key is not None else f"{self.hash}-selector-new"
-        logger.debug(f"{self.__class__.__name__}: cache key {hash_key}")
+        # Return the cached file or a default value for the CacheSelector type
+        return cache.get_file(hash_key) or (self.type() if callable(self.type) else None)
+    
+    def put_cached_data(self, ctx: Context, data: typing.Any) -> None:
+        cache: Cache = ctx.get_variable("cache")
+        hash_key = ctx.expand_context(self.cache_key) if self.cache_key is not None else f"{self.hash}-selector-cache-{self.__class__.__name__.lower()}"
+        logger.debug(f"{self.__class__.__name__} put_cached_values: cache key {hash_key}")
+        cache.put_file(hash_key, data)
 
-        old_set = set(cache.get_file(hash_key))
+class NewSelector(CacheSelector):
+    """
+    Select new items from a list of SelectorItems that is not in the cache
+    """
+    type = set
+
+    def run_all(self, ctx: Context, items:typing.List[SelectorItem]) -> typing.List[SelectorItem]:
+        cached_set = self.get_cached_data(ctx)
 
         # Iterate instead of `difference` to preserve order
-        new_entries = []
-        for datum in data:
-            if not datum in old_set:
-                new_entries.append(datum)
+        new_items = []
+        for item in items:
+            key = item.vars.get("key", hashlib.sha256(item.value).hexdigest())
+            if not key in cached_set:
+                new_items.append(item)
+                cached_set.add(key)
         
-        cache.put_file(hash_key, list(old_set.union(new_entries)))
-        return new_entries
-    
-class SinceSelector(Selector):
+        self.put_cached_data(ctx, list(cached_set))
+        return new_items
+
+class SinceSelector(CacheSelector):
     """
-    Select data from a list of bytes up until a previously observed datum
+    Select items from a list of SelectorItems up until a previously observed item
     """
-    default_key = "key"
-    keys = {
-        "key" : (type_none_or_type(str), None),
-    }
 
-    def run_all(self, ctx: Context, data:typing.List[bytes]) -> typing.List[bytes]:
-        cache: Cache = ctx.get_variable("cache")
-
-        hash_key = ctx.expand_context(self.key) if self.key is not None else f"{self.hash}-selector-since"
-        logger.debug(f"{self.__class__.__name__}: cache key {hash_key}")
-
+    def run_all(self, ctx: Context, items:typing.List[SelectorItem]) -> typing.List[SelectorItem]:
         index = None
-        since = cache.get_entry(hash_key)
-        if since is not None:
-            for i, datum in enumerate(data):
-                if hashlib.sha256(datum).hexdigest() == since:
+        last_key = self.get_cached_data(ctx)
+        if last_key is not None:
+            for i, item in enumerate(items):
+                key = item.vars.get("key", hashlib.sha256(item.value).hexdigest())
+                if key == last_key:
                     index = i
                     break
         
-        _data = data[:index]
-        if len(_data) > 0:
-            cache.put_entry(hash_key, hashlib.sha256(_data[0]).hexdigest())
-        return _data
+        _items = items[:index]
+        if len(_items) > 0:
+            key = _items[0].vars.get("key", hashlib.sha256(_items[0].value).hexdigest())
+            self.put_cached_data(ctx, list(key))
+        return _items
 
+class DictstoreSelector(CacheSelector):
+    """
+    Store items in a dict
+    """
+    type = dict
+
+    def run_all(self, ctx: Context, items:typing.List[SelectorItem]) -> typing.List[SelectorItem]:
+        cached_dict = self.get_cached_data(ctx)
+        for item in items:
+            key = item.vars.get("key", hashlib.sha256(item.value).hexdigest())
+            cached_dict[key] = item.encode()
+        self.put_cached_data(ctx, cached_dict)
+        return items
+    
+class DictloadSelector(CacheSelector):
+    """
+    Load items from a dict
+    """
+    type = dict
+
+    def run_all(self, ctx: Context, items:typing.List[SelectorItem]) -> typing.List[SelectorItem]:
+        cached_dict = self.get_cached_data(ctx)
+        results = []
+        for item in items:
+            results.append(item)
+            key = item.vars.get("key", hashlib.sha256(item.value).hexdigest())
+            if key in cached_dict:
+                results[-1] = item.clone(vars=cached_dict[key]["vars"])
+        return results

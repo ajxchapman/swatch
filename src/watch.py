@@ -12,7 +12,7 @@ from src.cache import Cache
 from src.context import Context
 from src.loadable import Loadable, LoadableException, type_one_of, type_none_or_type, type_list_of_type, type_choice
 from src.match import Match
-from src.selector import Selector
+from src.selector import Selector, SelectorItem
 
 logger = logging.getLogger(__name__)
 
@@ -177,13 +177,15 @@ class DataWatch(Watch):
         """
         raise WatchFetchException("Not implemented")
 
-    def select_data(self, ctx: Context, data: typing.List[bytes]) -> typing.List[bytes]:
+    def select_data(self, ctx: Context, data: typing.List[bytes]) -> typing.List[SelectorItem]:
         """
         Return the selected data from the Watch
         """
+
+        items = [SelectorItem(x) for x in data]
         for selector_kwargs in self.selectors:
-            data = Selector.load(**selector_kwargs).execute(ctx, data)
-        return data
+            items = Selector.load(**selector_kwargs).execute(ctx, items)
+        return items
 
     def match_data(self, ctx: Context, data: typing.List[bytes]) -> bool:
         """

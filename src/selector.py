@@ -153,7 +153,9 @@ class JqSelector(Selector):
             if isinstance(line, str):
                 results.append(item.clone(line.encode()))
             else:
-                results.append(item.clone(vars=line))
+                # Ensure all vars values are encoded
+                vars = {k: str(v).encode() for k, v in line.items()}
+                results.append(item.clone(vars=vars))
         return results
 
 class HTMLSelector(Selector):
@@ -346,7 +348,6 @@ class SinceSelector(CacheSelector):
     def run_all(self, ctx: Context, items:typing.List[SelectorItem]) -> typing.List[SelectorItem]:
         index = None
         last_key = self.get_cached_data(ctx)
-        print(last_key)
         if last_key is not None:
             for i, item in enumerate(items):
                 key = item.vars.get(self.key, hashlib.sha256(item.value).hexdigest())
@@ -355,7 +356,6 @@ class SinceSelector(CacheSelector):
                     break
         
         _items = items[:index]
-        print(_items)
         if len(_items) > 0:
             key = _items[0].vars.get(self.key, hashlib.sha256(_items[0].value).hexdigest().encode()).decode()
             self.put_cached_data(ctx, key)
@@ -373,7 +373,6 @@ class DictstoreSelector(CacheSelector):
             key = item.vars.get(self.key, hashlib.sha256(item.value).hexdigest().encode()).decode()
             cached_dict[key] = item.encode()
         self.put_cached_data(ctx, cached_dict)
-        print(cached_dict)
         return items
     
 class DictloadSelector(CacheSelector):

@@ -432,11 +432,11 @@ class LoopWatch(MultipleWatch):
         if trigger:
             for index, data in enumerate(ctx.get_variable(loop.hash)):
                 ctx.push_variable("index", index)
-                ctx.push_variable(getattr(self, "as"), data)
+                ctx.push_variable(getattr(self, "as"), data.value)
 
                 watch = Watch.load(**self.do)
                 # Fixup the loop action hash to ensure it is unique per input
-                watch.update_hash({getattr(self, "as") : data})
+                watch.update_hash({getattr(self, "as") : data.value})
                 yield watch
                 
                 ctx.pop_variable("index")

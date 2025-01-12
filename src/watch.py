@@ -187,17 +187,17 @@ class DataWatch(Watch):
             items = Selector.load(**selector_kwargs).execute(ctx, items)
         return items
 
-    def match_data(self, ctx: Context, data: typing.List[bytes]) -> bool:
+    def match_items(self, ctx: Context, items: typing.List[SelectorItem]) -> bool:
         """
         Return a boolean indicating whether the processed data matches the configured match
         """
         # By default match on any data, reject no data
         if self.match is None:
-            if len(data) == 0:
+            if len(items) == 0:
                 return False
             return True
 
-        return Match.load(**self.match).match(ctx, data)
+        return Match.load(**self.match).match(ctx, items)
 
     def run(self, ctx: Context) -> typing.Tuple[bool, typing.List[str], typing.List[dict]]:
         self.render_variables(ctx)
@@ -211,13 +211,13 @@ class DataWatch(Watch):
         ctx.set_variable("data", data)
         
         r = (False, [], [])
-        if self.match_data(ctx, data):
+        if self.match_items(ctx, data):
             r = (True, self.get_comment(ctx), self.get_data(ctx))
         
         return r
 
 class TrueWatch(DataWatch):
-    def match_data(self, ctx: Context, data: typing.List[bytes]) -> bool:
+    def match_items(self, ctx: Context, data: typing.List[bytes]) -> bool:
         return True
     
     def fetch_data(self, ctx: Context) -> typing.Iterable[bytes]:

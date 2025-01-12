@@ -7,6 +7,7 @@ from src.loadable import Loadable, type_none_or_type
 from src.context import Context
 from src.cache import Cache
 from src.template import template_render
+from src.selector import SelectorItem
 
 logger = logging.getLogger(__name__)
 
@@ -66,9 +67,13 @@ class CondMatch(Match):
         if self.operator is None:
             raise MatchException(f"Unknown operator '{self.operator}")
 
-    def match(self, ctx: Context, data: typing.List[bytes]) -> bool:
-        c1 = template_render(self.comparitor, ctx, data=data)
-        c2 = template_render(self.value, ctx, data=data)
+    def match(self, ctx: Context, items: typing.List[SelectorItem]) -> bool:
+        if len(items) != 1:
+            raise MatchException("CondMatch can only operate on one item")
+        
+        item = items[0]
+        c1 = template_render(self.comparitor, ctx, data=item.value)
+        c2 = template_render(self.value, ctx, data=item.value)
 
         logger.debug(f"CondMatch: {self.comparitor} {self.operator} {self.value}")
         logger.debug(f"CondMatch: {c1} {self.operator} {c2}")

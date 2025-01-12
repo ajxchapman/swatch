@@ -17,4 +17,4 @@ class TestStoreWatch(unittest.TestCase):
         w = Watch.load(cmd="echo 123")
         w.process(self.ctx)
 
-        self.assertListEqual(self.ctx["data"], [b'123\n'])
+        self.assertEqual(self.ctx["data"][0].value, b'123\n')

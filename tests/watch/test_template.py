@@ -55,7 +55,7 @@ class TestTemplateWatch(unittest.TestCase):
         
         trigger, _, _ = w.process(self.ctx)
         self.assertEqual(trigger, True)
-        self.assertLessEqual(self.ctx.get_variable(w.watches[0].hash), ["result v1"])
+        self.assertLessEqual(self.ctx.get_variable(w.watches[0].hash)[0].value, "result v1")
 
     def test_hash(self):
         w1 = Watch.load(template="static", variables={"k1" : "v1"})

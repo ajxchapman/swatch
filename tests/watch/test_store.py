@@ -17,4 +17,4 @@ class TestStoreWatch(unittest.TestCase):
         w = Watch.load(cmd="echo 123", store="VALUE", selectors=[{"type": "strip"}], match="None")
         
         w.process(self.ctx)
-        self.assertListEqual(self.ctx.get_variable("VALUE"), [b'123'])
+        self.assertEqual(self.ctx.get_variable("VALUE")[0].value, b'123')

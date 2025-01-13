@@ -293,6 +293,24 @@ class PickSelector(Selector):
         return [x for i, x in enumerate(items) if i in self.index]
 
 
+class FormatSelector(Selector):
+    """
+    Format a string with the vars values
+    """
+    default_key = "format"
+    keys = {
+        "format" : (str, ""),
+        "var" : (type_none_or_type(str), None)
+    }
+
+    def run(self, ctx: Context, item:SelectorItem) -> typing.List[SelectorItem]:
+        ctx.push_variable("vars", item.vars)
+        value = ctx.expand_context(self.format).encode()
+        ctx.pop_variable("vars")
+        if self.var is not None:
+            return [item.clone(vars={self.var: value})]
+        return [item.clone(value)]
+
 class CacheSelector(Selector):
     default_key = "cache_key"
     keys = {

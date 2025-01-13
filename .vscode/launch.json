@@ -9,7 +9,7 @@
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/watch.py",
-            "args": ["--test", "--debug", "watches/targets/chrome/bugs.yaml"],
+            "args": ["--test", "--debug", "${workspaceFolder}/watches/scratch.yml"],
             "console": "integratedTerminal",
             "justMyCode": true
         }

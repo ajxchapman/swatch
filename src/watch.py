@@ -248,11 +248,12 @@ class InfinateWatch(GeneratorWatch):
 class MultipleWatch(Watch):
     OPERATOR_ALL = ("all", "and")
     OPERATOR_ANY = ("any", "or")
+    OPERATOR_FIRST = "first"
     OPERATOR_LAST = "last"
     OPERATOR_BREAK = "break"
 
     keys = {
-        "operator" : (type_choice(["all", "and", "any", "or", "last"], throw=True), "any")
+        "operator" : (type_choice(["all", "and", "any", "or", "first", "last"], throw=True), "any")
     }
 
     def __init__(self, **kwargs):
@@ -283,6 +284,9 @@ class MultipleWatch(Watch):
             if _trigger:
                 comment.extend(_comment)
                 data.extend(_data)
+                if self.operator == MultipleWatch.OPERATOR_FIRST:
+                    logger.debug(f"{self.__class__.__name__}: run break first")
+                    break
             else:
                 if self.operator == MultipleWatch.OPERATOR_BREAK:
                     logger.debug(f"{self.__class__.__name__}: run break")

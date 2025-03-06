@@ -1,8 +1,8 @@
 import base64
 import hashlib
 import json
+import logging
 import os
-import re
 import shutil
 import subprocess
 import tempfile
@@ -10,6 +10,8 @@ import typing
 import yaml
 
 from cryptography.fernet import Fernet
+
+logger = logging.getLogger(__name__)
 
 KEY_EXPR = r"^[A-Za-z0-9_-]+$"
 
@@ -63,8 +65,19 @@ class Cache:
         else:
             shutil.rmtree(self.cache_dir)
 
+    def inspect(self, key: str) -> None:
+        if self.has_entry(key):
+            logger.info(f"Cache entry for {key}: \n\t{self.get_entry(key)}")
+        elif self.has_file(key):
+            logger.info(f"Cache file for {key}: \n\t{self.get_file(key)}")
+        else:
+            logger.info(f"No cache entry for {key}")
+        
+    def has_file(self, key: str) -> bool:
+        key_hash = hashlib.sha256(key.encode()).hexdigest()
+        return os.path.isfile(os.path.join(self.cache_dir, key_hash))
 
-    def get_file(self, key: str) -> typing.List[bytes]:
+    def get_file(self, key: str, default: typing.Any=None) -> typing.Any:
         key_hash = hashlib.sha256(key.encode()).hexdigest()
 
         if os.path.isfile(os.path.join(self.cache_dir, key_hash)):
@@ -73,9 +86,9 @@ class Cache:
                 if self.encryptor is not None:
                     data = self.encryptor.decrypt(data)
                 return json.loads(data, object_hook=json_decode)
-        return []
+        return default
 
-    def put_file(self, key: str, data: typing.List[bytes]) -> None:
+    def put_file(self, key: str, data: typing.Any) -> None:
         key_hash = hashlib.sha256(key.encode()).hexdigest()
         
         with open(os.path.join(self.cache_dir, key_hash), "wb") as f:

@@ -93,9 +93,21 @@ if __name__ == "__main__":
     parser.add_argument("--find", type=str, default=None)
     parser.add_argument("--verbose", "-v", action="store_true")
     parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--log", choices=["DEBUG", "DEV", "INFO"], default="INFO")
     parser.add_argument("--test", "-t", action="store_true")
     parser.add_argument('watches', type=str, nargs=argparse.REMAINDER)
     args = parser.parse_args()
+
+    # Setup logging
+    logging.DEV = logging.DEBUG + 5
+    logging.addLevelName(logging.DEV, 'DEV') 
+    
+    if args.log == "DEBUG":
+        logger.setLevel(logging.DEBUG)
+    elif args.log == "DEV":
+        logger.setLevel(logging.DEV)
+    else:
+        logger.setLevel(logging.INFO)
 
     if args.debug:
         logger.setLevel(logging.DEBUG)

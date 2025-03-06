@@ -322,10 +322,10 @@ class CacheSelector(Selector):
     def get_cached_data(self, ctx: Context) -> typing.Any:
         cache: Cache = ctx.get_variable("cache")
         hash_key = ctx.expand_context(self.cache_key) if self.cache_key is not None else f"{self.hash}-selector-cache-{self.__class__.__name__.lower()}"
-        logger.debug(f"{self.__class__.__name__} get_cached_values: cache key {hash_key}")
 
         # Return the cached file cast as type or a default value for the CacheSelector type
         data = cache.get_file(hash_key)
+        logger.log(logging.DEV, f"{self.__class__.__name__} get_cached_values: cache key {hash_key}: {data}")
         if data:
             if self.type:
                 return self.type(data)
@@ -335,7 +335,7 @@ class CacheSelector(Selector):
     def put_cached_data(self, ctx: Context, data: typing.Any) -> None:
         cache: Cache = ctx.get_variable("cache")
         hash_key = ctx.expand_context(self.cache_key) if self.cache_key is not None else f"{self.hash}-selector-cache-{self.__class__.__name__.lower()}"
-        logger.debug(f"{self.__class__.__name__} put_cached_values: cache key {hash_key}")
+        logger.log(logging.DEV, f"{self.__class__.__name__} put_cached_values: cache key {hash_key}: {data}")
         cache.put_file(hash_key, data)
 
 class NewSelector(CacheSelector):

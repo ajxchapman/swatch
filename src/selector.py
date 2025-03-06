@@ -365,18 +365,18 @@ class SinceSelector(CacheSelector):
 
     def run_all(self, ctx: Context, items:typing.List[SelectorItem]) -> typing.List[SelectorItem]:
         index = None
-        last_key = self.get_cached_data(ctx)
-        if last_key is not None:
+        last_value = self.get_cached_data(ctx)
+        if last_value is not None:
             for i, item in enumerate(items):
-                key = item.vars.get(self.key, hashlib.sha256(item.value).hexdigest())
-                if key == last_key:
+                item_value = item.vars.get(self.key, hashlib.sha256(item.value).hexdigest())
+                if item_value == last_value:
                     index = i
                     break
         
         _items = items[:index]
         if len(_items) > 0:
-            key = _items[0].vars.get(self.key, hashlib.sha256(_items[0].value).hexdigest().encode()).decode()
-            self.put_cached_data(ctx, key)
+            item_value = _items[0].vars.get(self.key, hashlib.sha256(_items[0].value).hexdigest().encode())
+            self.put_cached_data(ctx, item_value)
         return _items
 
 class DictstoreSelector(CacheSelector):

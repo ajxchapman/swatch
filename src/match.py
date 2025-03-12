@@ -58,7 +58,7 @@ class CondMatch(Match):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        m = re.match("(?:(.*)\s+)?(eq|==|neq|!=|lt|<|lte|<=|gt|>|gte|>=)\s+(.*)", self.value)
+        m = re.match(r'(?:(.*)\s+)?(eq|==|neq|!=|lt|<|lte|<=|gt|>|gte|>=)\s+(.*)', self.value)
         if m is not None:
             self.comparitor, self.operator, self.value = m.groups()
             self.comparitor = self.comparitor or self.keys["comparitor"][1]

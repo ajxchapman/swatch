@@ -199,7 +199,7 @@ class LinesSelector(Selector):
     def run(self, ctx: Context, item:SelectorItem) -> typing.List[SelectorItem]:
         value = item.value
         if html:
-            value = re.sub(b'<(br\s*/|/p)>', b'<\\1>\n', value)
+            value = re.sub(rb'<(br\s*/|/p)>', b'<\\1>\n', value)
             
         return [item.clone(x) for x in value.splitlines(keepends=self.keepends)]
 

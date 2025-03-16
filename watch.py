@@ -98,9 +98,6 @@ if __name__ == "__main__":
     parser.add_argument('watches', type=str, nargs=argparse.REMAINDER)
     args = parser.parse_args()
 
-    # Setup logging
-    logging.DEV = logging.DEBUG + 5
-    logging.addLevelName(logging.DEV, 'DEV') 
     
     if args.log == "DEBUG":
         logger.setLevel(logging.DEBUG)
@@ -135,6 +132,10 @@ if __name__ == "__main__":
     watch_files -= template_files
     logger.debug(f"Loading watch files: {watch_files}")
     logger.debug(f"Loading template files: {template_files}")
+
+    # cache = Cache(cache_path=args.cache, encryption_key=config.get("key"))
+    # cache.inspect("github:releases:cure53/DOMPurify:v1.0")
+    
 
     if args.find:
         find(watch_files, args.find)

@@ -20,7 +20,7 @@ class TestSinceSelector(unittest.TestCase):
 
         result = s.run_all(self.ctx, items)
         self.assertListEqual(result, items)
-        self.assertEqual(self.cache.get_file("test_empty"), hashlib.sha256(b'1').hexdigest())
+        self.assertEqual(self.cache.get_file("test_empty"), hashlib.sha256(b'1').hexdigest().encode())
     
     def test_new(self):
         s: Selector = Selector.load(type="since", cache_key="test_new")
@@ -29,7 +29,7 @@ class TestSinceSelector(unittest.TestCase):
         s.run_all(self.ctx, [items[2], items[3]])
         result = s.run_all(self.ctx, items)
         self.assertListEqual(result, [items[0], items[1]])
-        self.assertEqual(self.cache.get_file("test_new"), hashlib.sha256(b'1').hexdigest())
+        self.assertEqual(self.cache.get_file("test_new"), hashlib.sha256(b'1').hexdigest().encode())
     
     def test_no_new(self):
         s: Selector = Selector.load(type="since", cache_key="test_no_new")
@@ -38,5 +38,5 @@ class TestSinceSelector(unittest.TestCase):
         s.run_all(self.ctx, items)
         result = s.run_all(self.ctx, items)
         self.assertListEqual(result, [])
-        self.assertEqual(self.cache.get_file("test_no_new"), hashlib.sha256(b'1').hexdigest())
+        self.assertEqual(self.cache.get_file("test_no_new"), hashlib.sha256(b'1').hexdigest().encode())
         

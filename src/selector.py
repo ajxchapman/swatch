@@ -350,7 +350,11 @@ class NewSelector(CacheSelector):
         # Iterate instead of `difference` to preserve order
         new_items = []
         for item in items:
-            key = item.vars.get(self.key, hashlib.sha256(item.value).hexdigest().encode()).decode()
+            key = item.vars.get(self.key, hashlib.sha256(item.value).hexdigest())
+            # TODO: Is this the best way to coerce the key to bytes?
+            if isinstance(key, str):
+                key = key.encode()
+
             if not key in cached_set:
                 new_items.append(item)
                 cached_set.add(key)
@@ -369,13 +373,20 @@ class SinceSelector(CacheSelector):
         if last_value is not None:
             for i, item in enumerate(items):
                 item_value = item.vars.get(self.key, hashlib.sha256(item.value).hexdigest())
+                # TODO: Is this the best way to coerce the key to bytes?
+                if isinstance(item_value, str):
+                    item_value = item_value.encode()
+                
                 if item_value == last_value:
                     index = i
                     break
         
         _items = items[:index]
         if len(_items) > 0:
-            item_value = _items[0].vars.get(self.key, hashlib.sha256(_items[0].value).hexdigest().encode())
+            item_value = _items[0].vars.get(self.key, hashlib.sha256(_items[0].value).hexdigest())
+            # TODO: Is this the best way to coerce the item_value to bytes?
+            if isinstance(item_value, str):
+                item_value = item_value.encode()
             self.put_cached_data(ctx, item_value)
         return _items
 

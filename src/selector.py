@@ -297,6 +297,23 @@ class PickSelector(Selector):
             return []
         return [x for i, x in enumerate(items) if i in self.index]
 
+class TextToColsSelector(Selector):
+    """
+    """
+    default_key = "titles"
+    keys = {
+        "titles" : (type_list_of_type(str), []),
+    }
+
+    def run_all(self, ctx: Context, items:typing.List[SelectorItem]) -> typing.List[SelectorItem]:
+        r = SelectorItem(b"", {})
+        for i, t in enumerate(self.titles):
+            if i < len(items):
+                r.vars[t] = items[i].value
+            else:
+                r.vars[t] = None
+        return [r]
+            
 
 class FormatSelector(Selector):
     """

@@ -207,6 +207,7 @@ class SplitSelector(Selector):
     """
     Split a byte string into a list of byte strings using a separator
     """
+    default_key = "sep"
     keys = {
         "sep" : (str, ","),
         "start" : (int, 0),

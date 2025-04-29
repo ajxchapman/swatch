@@ -249,9 +249,13 @@ class StripTagsSelector(Selector):
     """
     Strip HTML tags from a byte string
     """
+    default_key = "replacement"
+    keys = {
+        "replacement" : (str, ""),
+    }
 
     def run(self, ctx: Context, item:SelectorItem) -> typing.List[SelectorItem]:
-        return [item.clone(re.sub(b'<[^>]+>', b'', item.value))]
+        return [item.clone(re.sub(b'(?:<[^>]+>)+', self.replacement.encode(), item.value))]
 
 class ReplaceSelector(Selector):
     """

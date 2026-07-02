@@ -25,7 +25,8 @@ class LogAction(Action):
     }
 
     def report(self, ctx: Context, data: dict) -> None:
-        comment = "\n\t" + "\n\t".join((data.get("comment") or data.get("data")).split("\n"))
+        message = data.get("comment") or json.dumps(data.get("data")) or ""
+        comment = "\n\t" + "\n\t".join(message.split("\n"))
         getattr(logger, self.level)(f"Comment: {comment}")
     
     def error(self, ctx: Context, data: dict) -> None:

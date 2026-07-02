@@ -26,7 +26,7 @@ def find(watch_files, hash):
                 print(watch_file, json.dumps(watch))
                 return
 
-def process(config: dict, cache: Cache, watch_files: typing.List[str], template_file: typing.List[str]) -> None:
+def process(config: dict, cache: Cache, watch_files: typing.List[str], template_files: typing.List[str]) -> None:
     cwd = os.getcwd()
 
     # Load global templates

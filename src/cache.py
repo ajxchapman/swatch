@@ -55,8 +55,9 @@ class Cache:
             with open(os.path.join(self.cache_dir, "cache.yaml"), "w") as f:
                 yaml.dump(self.cache, f, default_flow_style=False)
             
-            if not os.path.isdir(os.path.dirname(self.cache_path)):
-                os.makedirs(os.path.dirname(self.cache_path))
+            cache_parent = os.path.dirname(self.cache_path)
+            if cache_parent and not os.path.isdir(cache_parent):
+                os.makedirs(cache_parent)
             p = subprocess.run(["tar", "-C", self.cache_dir, "-czf", self.cache_path, "."])
             
             shutil.rmtree(self.cache_dir)

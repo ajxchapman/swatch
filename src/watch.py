@@ -125,7 +125,7 @@ class Watch(Loadable):
             trigger, comment, data = self.process(ctx)
         except:
             # Cache the failure count
-            failure_count = cache.get_entry(f"{self.hash}-failures")
+            failure_count = cache.get_entry(f"{self.hash}-failures", 0)
             cache.put_entry(f"{self.hash}-failures", failure_count + 1)
             
             if ctx["config"].get("verbose") == True:
@@ -139,7 +139,10 @@ class Watch(Loadable):
                 }
 
                 for action in actions:
-                    action.error(ctx, action_data)
+                    try:
+                        action.error(ctx, action_data)
+                    except Exception:
+                        logger.warning(f"{action.__class__.__name__} error action failed", exc_info=1)
         else:
             # Clear cached failure count
             cache.put_entry(f"{self.hash}-failures", 0)
@@ -155,7 +158,10 @@ class Watch(Loadable):
                 }
 
                 for action in actions:
-                    action.report(ctx, action_data)
+                    try:
+                        action.report(ctx, action_data)
+                    except Exception:
+                        logger.warning(f"{action.__class__.__name__} report action failed", exc_info=1)
             else:
                 logger.info(f"{self.hash}:{int(time.time() - starttime):04}:False")
 

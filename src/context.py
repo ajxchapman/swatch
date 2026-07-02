@@ -15,6 +15,8 @@ class Context:
         keys = set(self._variables.keys())
         for frame in self.frames:
             keys.update(frame.keys())
+        # `_frameId` is internal bookkeeping, not a context variable
+        keys.discard("_frameId")
         return list(keys)
 
     def __getitem__(self, key: typing.Any) -> typing.Any:
@@ -26,7 +28,7 @@ class Context:
     def pop_frame(self, id: str | None=None) -> None:
         frame = self.frames.pop()
         if frame["_frameId"] != id:
-            raise ContextException(f"Stack frames do not match up {id} != {frame['id']}")
+            raise ContextException(f"Stack frames do not match up {id} != {frame['_frameId']}")
 
     def push_variable(self, key: str, value: typing.Any) -> None:
         if len(self.frames) == 0:
@@ -50,7 +52,10 @@ class Context:
         """
         Get the most recent value of a variable from the context
         """
-        for frame in self.frames:
+        if key == "_frameId":
+            return default
+        # Search innermost frame first so the most recently pushed value wins
+        for frame in reversed(self.frames):
             if key in frame:
                 return frame[key][-1]
         return self._variables.get(key, default)

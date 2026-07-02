@@ -1,6 +1,49 @@
 import unittest
 
-from src.context import Context
+from src.context import Context, ContextException
+
+class TestContextFrames(unittest.TestCase):
+    def test_push_pop_variable(self):
+        ctx = Context()
+        ctx.push_frame("frame")
+        ctx.push_variable("k", "v1")
+        ctx.push_variable("k", "v2")
+        self.assertEqual(ctx.get_variable("k"), "v2")
+        self.assertEqual(ctx.pop_variable("k"), "v2")
+        self.assertEqual(ctx.get_variable("k"), "v1")
+        self.assertEqual(ctx.pop_variable("k"), "v1")
+        # Once emptied the key is removed from the frame
+        self.assertIsNone(ctx.get_variable("k"))
+        ctx.pop_frame("frame")
+
+    def test_pop_frame_mismatch(self):
+        # Regression: a frame id mismatch should raise a clean ContextException
+        # rather than a KeyError from referencing a non-existent frame key.
+        ctx = Context()
+        ctx.push_frame("expected")
+        with self.assertRaises(ContextException):
+            ctx.pop_frame("wrong")
+
+    def test_get_variable_returns_most_recent_frame(self):
+        # Regression: get_variable iterated outermost-first, returning the
+        # shallowest frame's value instead of the most recently pushed one.
+        ctx = Context()
+        ctx.push_frame("A")
+        ctx.push_variable("hash", "A")
+        ctx.push_frame("B")
+        ctx.push_variable("hash", "B")
+        self.assertEqual(ctx.get_variable("hash"), "B")
+        ctx.pop_variable("hash")
+        ctx.pop_frame("B")
+        # Falls back to the outer frame once the inner value is gone
+        self.assertEqual(ctx.get_variable("hash"), "A")
+
+    def test_frameid_not_exposed(self):
+        # The internal `_frameId` bookkeeping key must not leak as a variable
+        ctx = Context()
+        ctx.push_frame("A")
+        self.assertNotIn("_frameId", ctx.keys())
+        self.assertIsNone(ctx.get_variable("_frameId"))
 
 class TestContext(unittest.TestCase):
     def setUp(self) -> None:

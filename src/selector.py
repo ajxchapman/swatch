@@ -24,8 +24,10 @@ class SelectorItem():
         self.value:bytes = value
         self.vars:dict = vars or dict()
 
-    def clone(self, value:typing.Optional[bytes]=None, vars:typing.Optional[dict]={}) -> SelectorItem:
-        return SelectorItem(value or self.value, {**self.vars, **vars})
+    def clone(self, value:typing.Optional[bytes]=None, vars:typing.Optional[dict]=None) -> SelectorItem:
+        # Note: an explicit empty value (e.g. b'') must be preserved, so test
+        # against None rather than truthiness.
+        return SelectorItem(self.value if value is None else value, {**self.vars, **(vars or {})})
 
     def encode(self) -> dict:
         return {"value": self.value, "vars": self.vars}
@@ -150,12 +152,15 @@ class JqSelector(Selector):
         j = json.loads(item.value)
         results = []
         for line in jq.compile(self.value).input(j).all():
-            if isinstance(line, str):
-                results.append(item.clone(line.encode()))
-            else:
+            if isinstance(line, dict):
                 # Ensure all vars values are encoded
                 vars = {k: str(v).encode() for k, v in line.items()}
                 results.append(item.clone(vars=vars))
+            elif isinstance(line, str):
+                results.append(item.clone(line.encode()))
+            else:
+                # Coerce any other scalar (int, float, bool, None, list) to bytes
+                results.append(item.clone(str(line).encode()))
         return results
 
 class HTMLSelector(Selector):
@@ -198,7 +203,7 @@ class LinesSelector(Selector):
 
     def run(self, ctx: Context, item:SelectorItem) -> typing.List[SelectorItem]:
         value = item.value
-        if html:
+        if self.html:
             value = re.sub(rb'<(br\s*/|/p)>', b'<\\1>\n', value)
             
         return [item.clone(x) for x in value.splitlines(keepends=self.keepends)]

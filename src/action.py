@@ -1,6 +1,8 @@
 import logging
 import json
 import os
+import typing
+
 import requests
 
 from src.loadable import Loadable, type_choice, type_list_of_type
@@ -79,21 +81,48 @@ class FileLogAction(LogAction):
 class SlackAction(Action):
     keys = {
         "url" : (str, None),
-        "payload" : (dict, {"text" : "MESSAGE"})
+        "payload" : (dict, {"text" : "MESSAGE"}),
+        # Slack auto-splits long messages at an arbitrary character boundary,
+        # which breaks links/formatting. Chunk below that limit ourselves,
+        # splitting only on newlines.
+        "max_length" : (int, 3000),
     }
-    
-    def run(self, message: str) -> None:
+
+    def chunk(self, message: str) -> typing.List[str]:
+        """
+        Split a message into chunks no longer than `max_length`, breaking only
+        on newlines so lines (and the links within them) are never split. A
+        single line longer than `max_length` is emitted whole (best effort).
+        """
+        chunks = []
+        current = ""
+        for line in (message or "").split("\n"):
+            if current and len(current) + 1 + len(line) > self.max_length:
+                chunks.append(current)
+                current = line
+            else:
+                current = f"{current}\n{line}" if current else line
+        if current:
+            chunks.append(current)
+        return chunks
+
+    def post(self, message: str) -> None:
         data = json.dumps(self.payload).replace("MESSAGE", json.dumps(message).strip('"'))
-        r = requests.request(
+        requests.request(
             "POST",
             self.url,
             headers={"content-type" : "application/json"},
             data=data.encode()
         )
 
+    def run(self, message: str) -> None:
+        # Send each chunk as its own message, in order
+        for chunk in self.chunk(message):
+            self.post(chunk)
+
     def report(self, ctx: Context, data: dict) -> None:
         self.run(data.get("comment"))
-    
+
     def error(self, ctx: Context, data: dict) -> None:
         self.run(data.get("error"))
 

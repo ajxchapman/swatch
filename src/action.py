@@ -1,6 +1,7 @@
 import logging
 import json
 import os
+import re
 import typing
 
 import requests
@@ -78,15 +79,21 @@ class FileLogAction(LogAction):
         for line in data.get("error").splitlines():
             getattr(logger, self.error_level)(line)
 
-class SlackAction(Action):
+class WebhookAction(Action):
+    """
+    Base for webhook-based actions (Slack, Discord, ...). Posts the message as
+    JSON, substituting it into `payload` in place of the `MESSAGE` token, and
+    splits long messages on newline boundaries so lines/links are never broken.
+    """
     keys = {
         "url" : (str, None),
-        "payload" : (dict, {"text" : "MESSAGE"}),
-        # Slack auto-splits long messages at an arbitrary character boundary,
-        # which breaks links/formatting. Chunk below that limit ourselves,
-        # splitting only on newlines.
-        "max_length" : (int, 3000),
+        "payload" : (dict, {"content" : "MESSAGE"}),
+        "max_length" : (int, 2000),
     }
+
+    def transform(self, message: str) -> str:
+        """Hook for destination-specific rewrites (e.g. link syntax)."""
+        return message or ""
 
     def chunk(self, message: str) -> typing.List[str]:
         """
@@ -116,8 +123,9 @@ class SlackAction(Action):
         )
 
     def run(self, message: str) -> None:
-        # Send each chunk as its own message, in order
-        for chunk in self.chunk(message):
+        # Transform first so chunking measures the final text, then send each
+        # chunk as its own message, in order
+        for chunk in self.chunk(self.transform(message)):
             self.post(chunk)
 
     def report(self, ctx: Context, data: dict) -> None:
@@ -125,6 +133,25 @@ class SlackAction(Action):
 
     def error(self, ctx: Context, data: dict) -> None:
         self.run(data.get("error"))
+
+class SlackAction(WebhookAction):
+    # Slack auto-splits messages beyond ~4000 chars at an arbitrary boundary
+    keys = {
+        "payload" : (dict, {"text" : "MESSAGE"}),
+        "max_length" : (int, 3000),
+    }
+
+class DiscordAction(WebhookAction):
+    # Discord rejects content longer than 2000 chars outright
+    keys = {
+        "payload" : (dict, {"content" : "MESSAGE"}),
+        "max_length" : (int, 2000),
+    }
+
+    def transform(self, message: str) -> str:
+        # Convert Slack-style links `<url|text>` to Discord masked links
+        # `[text](url)` so the same comments render on both destinations
+        return re.sub(r"<([^|>]+)\|([^>]+)>", r"[\2](\1)", message or "")
 
 class RenderAction(Action):
     default_key = "name"

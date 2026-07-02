@@ -8,6 +8,7 @@ import typing
 
 import jq
 from bs4 import BeautifulSoup
+from lxml import etree
 
 from src.cache import Cache
 from src.context import Context
@@ -172,6 +173,66 @@ class XmlSelector(Selector):
     def run(self, ctx: Context, item:SelectorItem) -> typing.List[SelectorItem]:
         soup = BeautifulSoup(item.value, "lxml-xml")
         return [item.clone(str(x).encode()) for x in soup.select(self.value)]
+
+class XPathSelector(Selector):
+    """
+    Select nodes with XPath and (optionally) extract named sub-values into vars:
+
+        - xpath: '//item'
+          vars:
+            title: 'title/text()'
+            summary: 'description/text()'
+            link: 'link/text()'
+
+    XML namespaces are stripped after parsing so Atom and RSS feeds can be
+    queried with plain, prefix-free paths (e.g. `//item/title` works even when
+    the feed declares a default namespace). Each `vars` entry is a relative
+    XPath that returns text (`.../text()`) or an attribute (`.../@href`); the
+    first result is stored under that name. With no `vars`, the selected nodes
+    are returned as items - serialized XML for elements, or the string value
+    for text()/@attribute selects.
+    """
+    default_key = "select"
+    keys = {
+        "select" : (str, "."),
+        "vars" : (dict, dict),
+    }
+
+    @staticmethod
+    def _to_bytes(value: typing.Any) -> typing.Optional[bytes]:
+        if value is None:
+            return None
+        if isinstance(value, bytes):
+            return value
+        if isinstance(value, str):
+            return value.encode()
+        if isinstance(value, etree._Element):
+            return etree.tostring(value)
+        return str(value).encode()
+
+    def run(self, ctx: Context, item:SelectorItem) -> typing.List[SelectorItem]:
+        root = etree.fromstring(item.value, parser=etree.XMLParser(recover=True))
+        if root is None:
+            return []
+
+        # Strip namespaces so feed-agnostic paths work across RSS and Atom
+        for el in root.iter():
+            if isinstance(el.tag, str) and "}" in el.tag:
+                el.tag = el.tag.split("}", 1)[1]
+        etree.cleanup_namespaces(root)
+
+        results = []
+        for node in root.xpath(self.select):
+            if isinstance(node, etree._Element):
+                extracted = {}
+                for name, path in self.vars.items():
+                    found = node.xpath(path)
+                    extracted[name] = self._to_bytes(found[0]) if found else None
+                results.append(item.clone(etree.tostring(node), extracted))
+            else:
+                # text()/@attribute selects yield strings rather than elements
+                results.append(item.clone(self._to_bytes(node)))
+        return results
 
 class DecodeSelector(Selector):
     default_key = "encoding"

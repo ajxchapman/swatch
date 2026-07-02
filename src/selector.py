@@ -403,9 +403,26 @@ class CacheSelector(Selector):
     default_key = "cache_key"
     keys = {
         "cache_key" : (type_none_or_type(str), None),
-        "key" : (type_none_or_type(str), "key"),
+        "key" : (type_none_or_type(str), None),
     }
     type = None
+
+    def item_key(self, item: SelectorItem) -> typing.Optional[bytes]:
+        """
+        The identity bytes used to recognise an item across runs.
+
+        When a `key` var name is configured, the item must supply it - a missing
+        (or None) value returns None to signal malformed data (e.g. an API error
+        object parsed into empty items) rather than silently hashing the wrong
+        value. Without a configured key the item's value is hashed.
+        """
+        if self.key is not None:
+            value = item.vars.get(self.key)
+            if value is None:
+                return None
+        else:
+            value = hashlib.sha256(item.value).hexdigest()
+        return value.encode() if isinstance(value, str) else value
 
     def get_cached_data(self, ctx: Context) -> typing.Any:
         cache: Cache = ctx.get_variable("cache")
@@ -456,26 +473,27 @@ class SinceSelector(CacheSelector):
     """
 
     def run_all(self, ctx: Context, items:typing.List[SelectorItem]) -> typing.List[SelectorItem]:
+        keys = [self.item_key(item) for item in items]
+
+        # In keyed mode a missing key means the batch is malformed (e.g. an API
+        # error object parsed into empty items). Refuse it so we neither emit
+        # bogus results nor overwrite the cached position, which would otherwise
+        # cause the whole backlog to be re-reported on the next good response.
+        if any(key is None for key in keys):
+            logger.warning(f"{self.__class__.__name__}: item(s) missing key '{self.key}', skipping batch")
+            return []
+
         index = None
         last_value = self.get_cached_data(ctx)
         if last_value is not None:
-            for i, item in enumerate(items):
-                item_value = item.vars.get(self.key, hashlib.sha256(item.value).hexdigest())
-                # TODO: Is this the best way to coerce the key to bytes?
-                if isinstance(item_value, str):
-                    item_value = item_value.encode()
-                
-                if item_value == last_value:
+            for i, key in enumerate(keys):
+                if key == last_value:
                     index = i
                     break
-        
+
         _items = items[:index]
         if len(_items) > 0:
-            item_value = _items[0].vars.get(self.key, hashlib.sha256(_items[0].value).hexdigest())
-            # TODO: Is this the best way to coerce the item_value to bytes?
-            if isinstance(item_value, str):
-                item_value = item_value.encode()
-            self.put_cached_data(ctx, item_value)
+            self.put_cached_data(ctx, keys[0])
         return _items
 
 class DictstoreSelector(CacheSelector):
